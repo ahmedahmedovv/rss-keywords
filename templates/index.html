@@ -3,8 +3,16 @@
 {% block content %}
 <div class="max-w-4xl mx-auto">
     <h1 class="text-3xl font-bold mb-8">
-        {% if selected_keyword %}
-        Articles tagged with "{{ selected_keyword }}"
+        {% if selected_keywords %}
+        Articles tagged with: 
+        <div class="flex flex-wrap gap-2 mt-2">
+            {% for keyword in selected_keywords %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                {{ keyword }}
+                <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" class="ml-2 text-blue-600 hover:text-blue-800">×</a>
+            </span>
+            {% endfor %}
+        </div>
         {% else %}
         All Articles
         {% endif %}
@@ -22,8 +30,8 @@
             
             <div class="flex flex-wrap gap-2">
                 {% for keyword in article.keywords %}
-                <a href="{{ url_for('keyword_filter', keyword=keyword) }}" 
-                   class="px-2 py-1 bg-gray-100 text-sm rounded-full hover:bg-gray-200">
+                <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" 
+                   class="px-2 py-1 {% if keyword in selected_keywords %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %} text-sm rounded-full">
                     {{ keyword }}
                 </a>
                 {% endfor %}

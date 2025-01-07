@@ -1,6 +1,7 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 import json
 from collections import Counter
+from urllib.parse import urlencode
 
 app = Flask(__name__)
 
@@ -12,33 +13,53 @@ def load_articles():
         print(f"Error loading articles: {e}")
         return []
 
-def get_all_keywords():
-    articles = load_articles()
-    # Collect all keywords and their frequencies
+def get_filtered_keywords(articles, selected_keywords=None):
+    # Start with all articles if no keywords selected
+    filtered_articles = articles
+    if selected_keywords:
+        # Filter articles that contain ALL selected keywords
+        filtered_articles = [
+            article for article in articles
+            if all(kw in article.get('keywords', []) for kw in selected_keywords)
+        ]
+    
+    # Count keywords in filtered articles
     keyword_counter = Counter()
-    for article in articles:
+    for article in filtered_articles:
         keyword_counter.update(article.get('keywords', []))
-    # Return top 50 keywords
     return keyword_counter.most_common(50)
 
 @app.route('/')
 def index():
+    selected_keywords = request.args.getlist('keyword')
     articles = load_articles()
-    keywords = get_all_keywords()
-    return render_template('index.html', articles=articles, keywords=keywords)
+    
+    if selected_keywords:
+        filtered_articles = [
+            article for article in articles
+            if all(kw in article.get('keywords', []) for kw in selected_keywords)
+        ]
+    else:
+        filtered_articles = articles
+    
+    keywords = get_filtered_keywords(articles, selected_keywords)
+    
+    return render_template('index.html',
+                         articles=filtered_articles,
+                         keywords=keywords,
+                         selected_keywords=selected_keywords)
 
-@app.route('/keyword/<keyword>')
-def keyword_filter(keyword):
-    articles = load_articles()
-    filtered_articles = [
-        article for article in articles 
-        if keyword in article.get('keywords', [])
-    ]
-    keywords = get_all_keywords()
-    return render_template('index.html', 
-                         articles=filtered_articles, 
-                         keywords=keywords, 
-                         selected_keyword=keyword)
+@app.template_filter('toggle_keyword_url')
+def toggle_keyword_url(keyword, current_keywords):
+    new_keywords = current_keywords.copy()
+    if keyword in new_keywords:
+        new_keywords.remove(keyword)
+    else:
+        new_keywords.append(keyword)
+    
+    if new_keywords:
+        return f"/?{urlencode([('keyword', k) for k in new_keywords])}"
+    return "/"
 
 if __name__ == '__main__':
     app.run(debug=True) 
