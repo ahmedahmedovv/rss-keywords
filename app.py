@@ -81,11 +81,15 @@ def index():
     
     # Sort articles by date
     def parse_date(date_str):
+        """Parse date string ensuring DD/MM/YYYY format"""
         try:
+            # First try parsing as DD/MM/YYYY
             return datetime.strptime(date_str, '%d/%m/%Y')
         except ValueError:
             try:
-                return dateutil.parser.parse(date_str)
+                # If that fails, try dateutil parser and convert to DD/MM/YYYY
+                date = dateutil.parser.parse(date_str)
+                return date
             except:
                 return datetime.min
     
@@ -195,6 +199,93 @@ def format_date(date_string):
     except Exception as e:
         print(f"Error parsing date {date_string}: {e}")
         return date_string
+
+def analyze_dates():
+    """Analyze all dates in the database for consistency"""
+    try:
+        articles = load_articles()
+        inconsistencies = []
+        
+        for article in articles:
+            published = article.get('published', '')
+            try:
+                # Try to parse as DD/MM/YYYY
+                original_date = datetime.strptime(published, '%d/%m/%Y')
+                parsed_date = parse_date(published)
+                formatted_date = format_date(published)
+                
+                # Check if the dates are consistent
+                if original_date != parsed_date or original_date.strftime('%d/%m/%Y') != formatted_date:
+                    inconsistencies.append({
+                        'title': article.get('title', ''),
+                        'original': published,
+                        'parsed': parsed_date.strftime('%d/%m/%Y'),
+                        'formatted': formatted_date
+                    })
+            except ValueError as e:
+                inconsistencies.append({
+                    'title': article.get('title', ''),
+                    'original': published,
+                    'error': str(e)
+                })
+        
+        if inconsistencies:
+            print("\nDate inconsistencies found:")
+            for inc in inconsistencies:
+                print(f"\nArticle: {inc['title']}")
+                print(f"Original date: {inc['original']}")
+                if 'error' in inc:
+                    print(f"Error: {inc['error']}")
+                else:
+                    print(f"Parsed date: {inc['parsed']}")
+                    print(f"Formatted date: {inc['formatted']}")
+        else:
+            print("\nAll dates are consistent in DD/MM/YYYY format")
+            
+    except Exception as e:
+        print(f"Error analyzing dates: {e}")
+
+# Add this to your main route to run the analysis
+@app.route('/analyze-dates')
+def run_date_analysis():
+    analyze_dates()
+    return "Date analysis complete. Check server logs."
+
+def fix_date_formats():
+    """Fix any inconsistent date formats in the database"""
+    try:
+        articles = load_articles()
+        fixed_count = 0
+        
+        for article in articles:
+            published = article.get('published', '')
+            try:
+                # Parse the date and ensure DD/MM/YYYY format
+                date = parse_date(published)
+                correct_format = date.strftime('%d/%m/%Y')
+                
+                # Update if format is different
+                if published != correct_format:
+                    article['published'] = correct_format
+                    fixed_count += 1
+            except Exception as e:
+                print(f"Error fixing date for article '{article.get('title', '')}': {e}")
+        
+        if fixed_count > 0:
+            # Save the fixed articles back to the file
+            with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
+                json.dump(articles, f, ensure_ascii=False, indent=2)
+            print(f"\nFixed {fixed_count} date format inconsistencies")
+        else:
+            print("\nNo date formats needed fixing")
+            
+    except Exception as e:
+        print(f"Error fixing dates: {e}")
+
+@app.route('/fix-dates')
+def run_date_fixes():
+    fix_date_formats()
+    return "Date fixes complete. Check server logs."
 
 if __name__ == '__main__':
     app.run(debug=True) 

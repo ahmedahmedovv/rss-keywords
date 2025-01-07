@@ -322,7 +322,7 @@ def main():
         # Process all feeds
         console.print("[green]Starting RSS feed processing...[/green]")
         total_new_articles = 0
-        processed_urls = set()
+        processed_urls = load_processed_urls()
         
         for url in urls:
             console.print(f"\n[blue]Processing feed: {url}[/blue]")

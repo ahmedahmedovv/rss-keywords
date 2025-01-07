@@ -65,10 +65,10 @@
                             {{ article.title }}
                         </a>
                     </h2>
+                    <p class="text-sm text-gray-500 mb-2">{{ article.published }}</p>
                     <p class="text-gray-600 mb-4">{{ article.description }}</p>
                 </div>
                 <div class="flex flex-col items-end gap-2 ml-4">
-                    <span class="text-sm text-gray-500">{{ article.published|format_date }}</span>
                     <button 
                         onclick="event.stopPropagation(); toggleRead('{{ article.link|safe }}', this)"
                         class="px-3 py-1 text-sm rounded-full {% if article.read %}bg-gray-200 hover:bg-gray-300{% else %}bg-blue-100 hover:bg-blue-200{% endif %}"
