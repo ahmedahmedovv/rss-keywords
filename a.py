@@ -9,6 +9,7 @@ import langdetect
 from collections import Counter
 import re
 import string
+import yake
 
 console = Console()
 
@@ -45,21 +46,26 @@ def clean_text(text):
     return text
 
 def extract_keywords(text):
-    """Extract keywords from text, excluding common English stop words"""
-    # Common English stop words
-    stop_words = {'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
-                 'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 
-                 'to', 'was', 'were', 'will', 'with', 'the', 'this', 'but', 'they',
-                 'have', 'had', 'what', 'when', 'where', 'who', 'which', 'why', 'how'}
-    
-    cleaned_text = clean_text(text)
-    words = cleaned_text.split()
-    keywords = [word for word in words if word not in stop_words and len(word) > 2]
-    
-    # Count keyword frequencies
-    keyword_freq = Counter(keywords)
-    # Return top 20 keywords
-    return [word for word, _ in keyword_freq.most_common(20)]
+    """Extract keywords from text using YAKE"""
+    try:
+        # Initialize YAKE keyword extractor
+        kw_extractor = yake.KeywordExtractor(
+            lan="en",              # language
+            n=1,                   # extract single words
+            dedupLim=0.9,          # deduplication threshold
+            dedupFunc='seqm',      # deduplication function
+            windowsSize=1,         # window size
+            top=20,                # number of keywords to extract
+            features=None
+        )
+        
+        # Extract keywords
+        keywords = kw_extractor.extract_keywords(text)
+        # Return only the keywords (not their scores)
+        return [keyword for keyword, _ in keywords]
+    except Exception as e:
+        console.print(f"[red]Keyword extraction error: {e}[/red]")
+        return []
 
 def process_feed(url):
     """Process single RSS feed"""
