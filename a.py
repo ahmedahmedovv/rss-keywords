@@ -93,10 +93,18 @@ def extract_keywords(text):
             features=None
         )
         
+        # Unwanted keywords to filter out
+        unwanted_keywords = {'hspace', 'src', 'img', 'align'}
+        
         # Extract keywords
         keywords = kw_extractor.extract_keywords(text)
-        # Return only the keywords (not their scores)
-        return [keyword for keyword, _ in keywords]
+        # Filter out unwanted keywords and return only the keywords (not their scores)
+        filtered_keywords = [
+            keyword for keyword, _ in keywords 
+            if keyword.lower() not in unwanted_keywords
+        ]
+        
+        return filtered_keywords
     except Exception as e:
         console.print(f"[red]Keyword extraction error: {e}[/red]")
         return []
