@@ -94,7 +94,7 @@ def extract_keywords(text):
         )
         
         # Unwanted keywords to filter out
-        unwanted_keywords = {'href', 'rel', 'months', 'vspace', 'image', 'alt', 'years', 'head', 'class', 'time', 'jpeg', 'left', 'width', 'type', 'year', 'month', 'day', 'hspace', 'src', 'img', 'align', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'}
+        unwanted_keywords = {'margin-bottom', 'display', 'height', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'href', 'rel', 'months', 'vspace', 'image', 'alt', 'years', 'head', 'class', 'time', 'jpeg', 'left', 'width', 'type', 'year', 'month', 'day', 'hspace', 'src', 'img', 'align', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'}
         
         # Extract keywords
         keywords = kw_extractor.extract_keywords(text)
@@ -135,8 +135,16 @@ def load_existing_articles():
     return []
 
 def process_feed(url, processed_urls):
-    """Process single RSS feed, skipping already processed articles"""
     try:
+        # First load existing articles to preserve read status
+        existing_articles = {}
+        try:
+            with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
+                for article in json.load(f):
+                    existing_articles[article['link']] = article.get('read', False)
+        except FileNotFoundError:
+            pass
+
         feed = feedparser.parse(url)
         articles = []
         
@@ -160,7 +168,7 @@ def process_feed(url, processed_urls):
                 'published': entry.get('published', ''),
                 'original_language': detect_language(entry.title),
                 'keywords': combined_keywords,
-                'read': False  # Initialize read status
+                'read': existing_articles.get(entry.link, False)  # Preserve existing read status or default to False
             }
             articles.append(article)
         
@@ -205,6 +213,10 @@ def main():
     # Load previously processed URLs and existing articles
     processed_urls = load_processed_urls()
     all_articles = load_existing_articles()
+    
+    # Create a map of existing article read states
+    existing_read_states = {article['link']: article.get('read', False) for article in all_articles}
+    
     console.print(f"[green]Found {len(processed_urls)} previously processed articles[/green]")
     
     # Process all feeds
@@ -216,6 +228,11 @@ def main():
         new_articles = process_feed(url, processed_urls)
         
         if new_articles:
+            # Preserve read states for existing articles
+            for article in new_articles:
+                if article['link'] in existing_read_states:
+                    article['read'] = existing_read_states[article['link']]
+            
             # Update the main articles list
             all_articles.extend(new_articles)
             total_new_articles += len(new_articles)
