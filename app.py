@@ -2,13 +2,28 @@ from flask import Flask, render_template, request
 import json
 from collections import Counter
 from urllib.parse import urlencode
+import re
+from html import unescape
 
 app = Flask(__name__)
+
+def clean_html(text):
+    """Remove HTML tags and decode HTML entities"""
+    # First decode HTML entities
+    text = unescape(text)
+    # Then remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    return text
 
 def load_articles():
     try:
         with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+            articles = json.load(f)
+            # Clean HTML from title and description
+            for article in articles:
+                article['title'] = clean_html(article['title'])
+                article['description'] = clean_html(article['description'])
+            return articles
     except Exception as e:
         print(f"Error loading articles: {e}")
         return []

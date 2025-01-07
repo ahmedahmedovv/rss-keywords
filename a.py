@@ -10,8 +10,19 @@ from collections import Counter
 import re
 import string
 import yake
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from bs4 import BeautifulSoup
 
 console = Console()
+
+# Download required NLTK data (run once)
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('averaged_perceptron_tagger')
 
 def create_data_folder():
     """Create data folder if it doesn't exist"""
@@ -38,12 +49,35 @@ def translate_if_needed(text):
         return text
 
 def clean_text(text):
-    """Clean text by removing punctuation, numbers, and extra whitespace"""
-    text = text.lower()
-    text = re.sub(r'[' + string.punctuation + ']', ' ', text)
-    text = re.sub(r'\d+', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    """Clean text using NLTK for better text preprocessing"""
+    try:
+        # Remove HTML tags using BeautifulSoup
+        soup = BeautifulSoup(text, "html.parser")
+        text = soup.get_text()
+        
+        # Tokenize
+        tokens = word_tokenize(text.lower())
+        
+        # Initialize lemmatizer
+        lemmatizer = WordNetLemmatizer()
+        
+        # Get English stop words
+        stop_words = set(stopwords.words('english'))
+        
+        # Clean and lemmatize tokens
+        cleaned_tokens = [
+            lemmatizer.lemmatize(token) 
+            for token in tokens 
+            if token.isalnum() and  # Keep only alphanumeric
+            token not in stop_words and  # Remove stop words
+            len(token) > 2  # Remove short tokens
+        ]
+        
+        # Join tokens back into text
+        return ' '.join(cleaned_tokens)
+    except Exception as e:
+        print(f"Error cleaning text: {e}")
+        return text
 
 def extract_keywords(text):
     """Extract keywords from text using YAKE"""
@@ -127,11 +161,25 @@ def process_feed(url, processed_urls):
         console.print(f"[red]Error processing feed {url}: {e}[/red]")
         return []
 
+def load_urls_from_file():
+    """Load URLs from url.md file"""
+    try:
+        with open('url.md', 'r', encoding='utf-8') as f:
+            # Read lines and remove empty ones
+            urls = [line.strip() for line in f if line.strip()]
+            console.print(f"[green]Loaded {len(urls)} URLs from url.md[/green]")
+            return urls
+    except Exception as e:
+        console.print(f"[red]Error loading URLs from url.md: {e}[/red]")
+        return []
+
 def main():
-    urls = [
-        "https://notesfrompoland.com/feed/",
-        "https://defence24.pl/_RSS"
-    ]
+    # Load URLs from file instead of hardcoding
+    urls = load_urls_from_file()
+    
+    if not urls:
+        console.print("[red]No URLs found in url.md. Exiting...[/red]")
+        return
     
     create_data_folder()
     
