@@ -5,6 +5,86 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RSS Feed Reader</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function toggleRead(articleId, element) {
+            // First encode the URL properly
+            const encodedId = encodeURIComponent(articleId);
+            
+            console.log('Toggling article:', articleId); // Debug log
+            
+            fetch(`/toggle-read/${encodedId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Server response:', data); // Debug log
+                    
+                    if (data.success) {
+                        const card = element.closest('.article-card');
+                        if (data.read) {
+                            card.classList.add('read');
+                            element.textContent = 'Mark as Unread';
+                            element.classList.remove('bg-blue-100', 'hover:bg-blue-200');
+                            element.classList.add('bg-gray-200', 'hover:bg-gray-300');
+                        } else {
+                            card.classList.remove('read');
+                            element.textContent = 'Mark as Read';
+                            element.classList.remove('bg-gray-200', 'hover:bg-gray-300');
+                            element.classList.add('bg-blue-100', 'hover:bg-blue-200');
+                        }
+                    } else {
+                        console.error('Failed to toggle read status:', data.error);
+                        alert('Failed to update read status. Please try again.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred. Please try again.');
+                });
+        }
+
+        function toggleReadFilter(filter) {
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`.filter-btn.${filter}`).classList.add('active');
+            
+            // Filter articles
+            document.querySelectorAll('.article-card').forEach(card => {
+                card.classList.remove('hidden');
+                const isRead = card.classList.contains('read');
+                
+                switch(filter) {
+                    case 'read':
+                        if (!isRead) card.classList.add('hidden');
+                        break;
+                    case 'unread':
+                        if (isRead) card.classList.add('hidden');
+                        break;
+                    // 'all' case - show everything (already handled by removing 'hidden')
+                }
+            });
+        }
+    </script>
+    <style>
+        .article-card.read {
+            opacity: 0.7;
+        }
+        .article-card.read h2 {
+            color: #666 !important;
+        }
+        .filter-btn.active {
+            background-color: #3b82f6 !important;
+            color: white !important;
+        }
+        .article-card.hidden {
+            display: none;
+        }
+    </style>
 </head>
 <body class="bg-gray-100">
     <div class="flex">

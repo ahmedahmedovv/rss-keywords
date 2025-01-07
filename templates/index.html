@@ -2,30 +2,56 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold mb-8">
-        {% if selected_keywords %}
-        Articles tagged with: 
-        <div class="flex flex-wrap gap-2 mt-2">
-            {% for keyword in selected_keywords %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                {{ keyword }}
-                <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" class="ml-2 text-blue-600 hover:text-blue-800">×</a>
-            </span>
-            {% endfor %}
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">
+            {% if selected_keywords %}
+            Articles tagged with: 
+            <div class="flex flex-wrap gap-2 mt-2">
+                {% for keyword in selected_keywords %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                    {{ keyword }}
+                    <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" class="ml-2 text-blue-600 hover:text-blue-800">×</a>
+                </span>
+                {% endfor %}
+            </div>
+            {% else %}
+            All Articles
+            {% endif %}
+        </h1>
+        
+        <div class="flex gap-2">
+            <a href="{{ url_for('index', keyword=selected_keywords, read_filter='all') }}" 
+               class="px-3 py-2 text-sm rounded-lg {% if read_filter == 'all' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
+                All
+            </a>
+            <a href="{{ url_for('index', keyword=selected_keywords, read_filter='unread') }}"
+               class="px-3 py-2 text-sm rounded-lg {% if read_filter == 'unread' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
+                Unread Only
+            </a>
+            <a href="{{ url_for('index', keyword=selected_keywords, read_filter='read') }}"
+               class="px-3 py-2 text-sm rounded-lg {% if read_filter == 'read' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
+                Read Only
+            </a>
         </div>
-        {% else %}
-        All Articles
-        {% endif %}
-    </h1>
+    </div>
     
     <div class="space-y-6">
         {% for article in articles %}
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-bold mb-2">
-                <a href="{{ article.link }}" target="_blank" class="text-blue-600 hover:text-blue-800">
-                    {{ article.title }}
-                </a>
-            </h2>
+        <div class="bg-white rounded-lg shadow-md p-6 article-card {% if article.read %}read{% endif %}">
+            <div class="flex justify-between items-start mb-2">
+                <h2 class="text-xl font-bold">
+                    <a href="{{ article.link }}" target="_blank" class="text-blue-600 hover:text-blue-800">
+                        {{ article.title }}
+                    </a>
+                </h2>
+                <button 
+                    onclick="toggleRead('{{ article.link }}', this)"
+                    class="px-3 py-1 text-sm rounded-full {% if article.read %}bg-gray-200 hover:bg-gray-300{% else %}bg-blue-100 hover:bg-blue-200{% endif %}"
+                >
+                    {% if article.read %}Mark as Unread{% else %}Mark as Read{% endif %}
+                </button>
+            </div>
+            
             <p class="text-gray-600 mb-4">{{ article.description }}</p>
             
             <div class="flex flex-wrap gap-2">

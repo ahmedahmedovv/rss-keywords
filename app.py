@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import json
 from collections import Counter
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
 import re
 from html import unescape
 
@@ -23,6 +23,9 @@ def load_articles():
             for article in articles:
                 article['title'] = clean_html(article['title'])
                 article['description'] = clean_html(article['description'])
+                # Ensure read status exists
+                if 'read' not in article:
+                    article['read'] = False
             return articles
     except Exception as e:
         print(f"Error loading articles: {e}")
@@ -47,8 +50,10 @@ def get_filtered_keywords(articles, selected_keywords=None):
 @app.route('/')
 def index():
     selected_keywords = request.args.getlist('keyword')
+    read_filter = request.args.get('read_filter', 'all')  # Default to 'all'
     articles = load_articles()
     
+    # First filter by keywords if any
     if selected_keywords:
         filtered_articles = [
             article for article in articles
@@ -57,12 +62,19 @@ def index():
     else:
         filtered_articles = articles
     
+    # Then filter by read status
+    if read_filter == 'read':
+        filtered_articles = [article for article in filtered_articles if article.get('read', False)]
+    elif read_filter == 'unread':
+        filtered_articles = [article for article in filtered_articles if not article.get('read', False)]
+    
     keywords = get_filtered_keywords(articles, selected_keywords)
     
     return render_template('index.html',
                          articles=filtered_articles,
                          keywords=keywords,
-                         selected_keywords=selected_keywords)
+                         selected_keywords=selected_keywords,
+                         read_filter=read_filter)
 
 @app.template_filter('toggle_keyword_url')
 def toggle_keyword_url(keyword, current_keywords):
@@ -72,9 +84,56 @@ def toggle_keyword_url(keyword, current_keywords):
     else:
         new_keywords.append(keyword)
     
-    if new_keywords:
-        return f"/?{urlencode([('keyword', k) for k in new_keywords])}"
+    # Get current read filter
+    read_filter = request.args.get('read_filter', 'all')
+    
+    # Build query parameters
+    params = []
+    for k in new_keywords:
+        params.append(('keyword', k))
+    if read_filter != 'all':
+        params.append(('read_filter', read_filter))
+    
+    if params:
+        return f"/?{urlencode(params)}"
     return "/"
+
+@app.route('/toggle-read/<path:article_id>')
+def toggle_read(article_id):
+    try:
+        # Decode the URL-encoded article ID
+        decoded_id = unquote(unquote(article_id))
+        
+        # Load articles from file
+        with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
+            articles = json.load(f)
+        
+        # Find and toggle article read status
+        article_found = False
+        current_status = False
+        
+        for article in articles:
+            if article['link'] == decoded_id:
+                article['read'] = not article.get('read', False)
+                current_status = article['read']
+                article_found = True
+                break
+        
+        if not article_found:
+            print(f"Article not found: {decoded_id}")  # Debug print
+            return jsonify({'success': False, 'error': 'Article not found'})
+        
+        # Save updated articles back to file
+        with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
+            json.dump(articles, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({
+            'success': True, 
+            'read': current_status
+        })
+    except Exception as e:
+        print(f"Error in toggle_read: {e}")  # Debug print
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True) 

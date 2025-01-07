@@ -141,7 +141,6 @@ def process_feed(url, processed_urls):
         articles = []
         
         for entry in track(feed.entries, description=f"Processing {url}..."):
-            # Skip if article already processed
             if entry.link in processed_urls:
                 console.print(f"[blue]Skipping already processed article: {entry.link}[/blue]")
                 continue
@@ -160,7 +159,8 @@ def process_feed(url, processed_urls):
                 'link': entry.link,
                 'published': entry.get('published', ''),
                 'original_language': detect_language(entry.title),
-                'keywords': combined_keywords
+                'keywords': combined_keywords,
+                'read': False  # Initialize read status
             }
             articles.append(article)
         
