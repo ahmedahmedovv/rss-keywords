@@ -136,12 +136,10 @@ def load_existing_articles():
     return []
 
 def standardize_date(date_str):
-    """Convert various date formats to standard ISO format"""
+    """Convert various date formats to DD/MM/YYYY format"""
     try:
-        # Parse the date string using dateutil (handles multiple formats)
         parsed_date = dateutil.parser.parse(date_str)
-        # Convert to ISO 8601 format
-        return parsed_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+        return parsed_date.strftime('%d/%m/%Y')
     except Exception as e:
         console.print(f"[red]Error parsing date {date_str}: {e}[/red]")
         return date_str
@@ -149,9 +147,7 @@ def standardize_date(date_str):
 def format_date(date_string):
     """Convert any date format to DD/MM/YYYY"""
     try:
-        # Parse the input date string
         date = dateutil.parser.parse(date_string)
-        # Format to DD/MM/YYYY
         return date.strftime('%d/%m/%Y')
     except Exception as e:
         console.print(f"[yellow]Warning: Could not parse date {date_string}: {e}[/yellow]")
