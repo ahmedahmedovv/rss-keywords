@@ -6,11 +6,18 @@
     <title>RSS Feed Reader</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        function toggleRead(articleId, element) {
-            // First encode the URL properly
-            const encodedId = encodeURIComponent(articleId);
+        function handleCardClick(event, articleId, element) {
+            // Don't toggle if text is selected
+            if (window.getSelection().toString()) {
+                return;
+            }
             
-            console.log('Toggling article:', articleId); // Debug log
+            // Toggle read status
+            toggleRead(articleId, element.querySelector('button'));
+        }
+
+        function toggleRead(articleId, buttonElement) {
+            const encodedId = encodeURIComponent(encodeURIComponent(articleId));
             
             fetch(`/toggle-read/${encodedId}`)
                 .then(response => {
@@ -20,29 +27,25 @@
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Server response:', data); // Debug log
-                    
                     if (data.success) {
-                        const card = element.closest('.article-card');
+                        const card = buttonElement.closest('.article-card');
+                        card.classList.toggle('read');
+                        
                         if (data.read) {
-                            card.classList.add('read');
-                            element.textContent = 'Mark as Unread';
-                            element.classList.remove('bg-blue-100', 'hover:bg-blue-200');
-                            element.classList.add('bg-gray-200', 'hover:bg-gray-300');
+                            buttonElement.textContent = 'Mark as Unread';
+                            buttonElement.classList.remove('bg-blue-100', 'hover:bg-blue-200');
+                            buttonElement.classList.add('bg-gray-200', 'hover:bg-gray-300');
                         } else {
-                            card.classList.remove('read');
-                            element.textContent = 'Mark as Read';
-                            element.classList.remove('bg-gray-200', 'hover:bg-gray-300');
-                            element.classList.add('bg-blue-100', 'hover:bg-blue-200');
+                            buttonElement.textContent = 'Mark as Read';
+                            buttonElement.classList.remove('bg-gray-200', 'hover:bg-gray-300');
+                            buttonElement.classList.add('bg-blue-100', 'hover:bg-blue-200');
                         }
                     } else {
                         console.error('Failed to toggle read status:', data.error);
-                        alert('Failed to update read status. Please try again.');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('An error occurred. Please try again.');
                 });
         }
 
@@ -71,11 +74,20 @@
         }
     </script>
     <style>
+        .article-card {
+            transition: background-color 0.2s ease;
+        }
+        
         .article-card.read {
             opacity: 0.7;
         }
+        
         .article-card.read h2 {
             color: #666 !important;
+        }
+        
+        .article-card:hover {
+            background-color: #f8fafc;
         }
         .filter-btn.active {
             background-color: #3b82f6 !important;
