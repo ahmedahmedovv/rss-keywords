@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSS Feed Reader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="flex">
+        <!-- Sidebar -->
+        <div class="w-64 h-screen bg-white shadow-lg fixed left-0 overflow-y-auto">
+            <div class="p-4">
+                <h2 class="text-xl font-bold mb-4">Keywords</h2>
+                <div class="space-y-2">
+                    {% for keyword, count in keywords %}
+                    <a href="{{ url_for('keyword_filter', keyword=keyword) }}" 
+                       class="block px-3 py-2 rounded-lg {% if selected_keyword == keyword %}bg-blue-500 text-white{% else %}hover:bg-gray-100{% endif %}">
+                        {{ keyword }} ({{ count }})
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="ml-64 p-8 w-full">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</body>
+</html> 
