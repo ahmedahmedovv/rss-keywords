@@ -53,7 +53,7 @@ def get_filtered_keywords(articles, selected_keywords=None):
 def index():
     selected_keywords = request.args.getlist('keyword')
     read_filter = request.args.get('read_filter', 'all')
-    sort_order = request.args.get('sort', 'desc')  # Default to newest first
+    sort_order = request.args.get('sort', 'desc')
     
     articles = load_articles()
     
@@ -73,8 +73,18 @@ def index():
         filtered_articles = [article for article in filtered_articles if not article.get('read', False)]
     
     # Sort articles by date
+    def parse_date(date_str):
+        try:
+            return datetime.strptime(date_str, '%d/%m/%Y')
+        except ValueError:
+            try:
+                return dateutil.parser.parse(date_str)
+            except:
+                return datetime.min
+    
+    # Sort using the parsed dates
     filtered_articles.sort(
-        key=lambda x: dateutil.parser.parse(x.get('published', '1970-01-01T00:00:00.000Z')),
+        key=lambda x: parse_date(x.get('published', '')),
         reverse=(sort_order == 'desc')
     )
     
@@ -148,6 +158,22 @@ def toggle_read(article_id):
     except Exception as e:
         print(f"Error in toggle_read: {e}")  # Debug print
         return jsonify({'success': False, 'error': str(e)})
+
+@app.template_filter('format_date')
+def format_date(date_string):
+    """Convert any date format to DD/MM/YYYY"""
+    try:
+        # First try to parse as DD/MM/YYYY
+        try:
+            date = datetime.strptime(date_string, '%d/%m/%Y')
+            return date_string  # Already in correct format
+        except ValueError:
+            # If that fails, try parsing with dateutil
+            date = dateutil.parser.parse(date_string)
+            return date.strftime('%d/%m/%Y')
+    except Exception as e:
+        print(f"Error parsing date {date_string}: {e}")
+        return date_string
 
 if __name__ == '__main__':
     app.run(debug=True) 

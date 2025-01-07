@@ -4,7 +4,7 @@ from deep_translator import GoogleTranslator
 import feedparser
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import langdetect
 from collections import Counter
 import re
@@ -146,6 +146,17 @@ def standardize_date(date_str):
         console.print(f"[red]Error parsing date {date_str}: {e}[/red]")
         return date_str
 
+def format_date(date_string):
+    """Convert any date format to DD/MM/YYYY"""
+    try:
+        # Parse the input date string
+        date = dateutil.parser.parse(date_string)
+        # Format to DD/MM/YYYY
+        return date.strftime('%d/%m/%Y')
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not parse date {date_string}: {e}[/yellow]")
+        return date_string
+
 def process_feed(url, processed_urls):
     try:
         # Load existing articles to preserve read status
@@ -173,16 +184,15 @@ def process_feed(url, processed_urls):
             desc_keywords = extract_keywords(translated_description)
             combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
             
-            # Get and standardize the published date
+            # Format the date immediately when creating new article
             published_date = entry.get('published', '')
-            if published_date:
-                published_date = standardize_date(published_date)
+            formatted_date = format_date(published_date)
             
             article = {
                 'title': translated_title,
                 'description': translated_description,
                 'link': entry.link,
-                'published': published_date,
+                'published': formatted_date,  # Store in DD/MM/YYYY format
                 'original_language': detect_language(entry.title),
                 'keywords': combined_keywords,
                 'read': existing_articles.get(entry.link, False)
@@ -217,80 +227,131 @@ def save_articles(articles, json_file):
         return False
 
 def standardize_existing_dates():
-    """Update existing articles with standardized dates"""
+    """Convert all existing dates to DD/MM/YYYY format"""
     try:
-        # Load existing articles
+        if not os.path.exists('data/rss_feed.json'):
+            return
+            
         with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
             articles = json.load(f)
         
-        # Standardize dates
+        # Convert all dates to DD/MM/YYYY format
         for article in articles:
             if 'published' in article and article['published']:
-                article['published'] = standardize_date(article['published'])
+                article['published'] = format_date(article['published'])
         
-        # Save updated articles
+        # Save the updated articles
         with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
             
-        console.print("[green]Successfully standardized existing dates[/green]")
+        console.print("[green]Successfully standardized all dates to DD/MM/YYYY format[/green]")
     except Exception as e:
         console.print(f"[red]Error standardizing dates: {e}[/red]")
 
-def main():
-    # Add this line at the start of main to update existing dates
-    standardize_existing_dates()
-    
-    # Load URLs from file instead of hardcoding
-    urls = load_urls_from_file()
-    
-    if not urls:
-        console.print("[red]No URLs found in url.md. Exiting...[/red]")
-        return
-    
-    create_data_folder()
-    json_file = 'data/rss_feed.json'
-    
-    # Load previously processed URLs and existing articles
-    processed_urls = load_processed_urls()
-    all_articles = load_existing_articles()
-    
-    # Create a map of existing article read states
-    existing_read_states = {article['link']: article.get('read', False) for article in all_articles}
-    
-    console.print(f"[green]Found {len(processed_urls)} previously processed articles[/green]")
-    
-    # Process all feeds
-    console.print("[green]Starting RSS feed processing...[/green]")
-    total_new_articles = 0
-    
-    for url in urls:
-        console.print(f"\n[blue]Processing feed: {url}[/blue]")
-        new_articles = process_feed(url, processed_urls)
+def delete_old_articles():
+    """Delete articles older than one month"""
+    try:
+        if not os.path.exists('data/rss_feed.json'):
+            console.print("[yellow]No articles file found. Creating new one.[/yellow]")
+            return []
         
-        if new_articles:
-            # Preserve read states for existing articles
-            for article in new_articles:
-                if article['link'] in existing_read_states:
-                    article['read'] = existing_read_states[article['link']]
+        with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
+            articles = json.load(f)
+        
+        # Calculate cutoff date (1 month ago)
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
+        cutoff_date_str = cutoff_date.strftime('%d/%m/%Y')
+        
+        current_articles = []
+        deleted_articles = []
+        
+        for article in articles:
+            try:
+                # Parse the DD/MM/YYYY format date
+                published_date = datetime.strptime(article['published'], '%d/%m/%Y')
+                if published_date > cutoff_date:
+                    current_articles.append(article)
+                else:
+                    deleted_articles.append(article)
+            except (ValueError, TypeError) as e:
+                console.print(f"[yellow]Warning: Could not parse date for article: {article.get('title', 'Unknown')}[/yellow]")
+                current_articles.append(article)
+        
+        deleted_count = len(deleted_articles)
+        
+        if deleted_count > 0:
+            with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
+                json.dump(current_articles, f, ensure_ascii=False, indent=2)
             
-            # Update the main articles list
-            all_articles.extend(new_articles)
-            total_new_articles += len(new_articles)
+            os.makedirs('data', exist_ok=True)
+            with open('data/deleted_articles.json', 'w', encoding='utf-8') as f:
+                json.dump(deleted_articles, f, ensure_ascii=False, indent=2)
             
-            # Save incrementally after each feed
-            if save_articles(all_articles, json_file):
+            console.print(f"[green]Deleted {deleted_count} articles older than 30 days[/green]")
+            if current_articles:
+                console.print(f"[blue]Oldest retained article: {min(article.get('published', '') for article in current_articles)}[/blue]")
+                console.print(f"[blue]Newest retained article: {max(article.get('published', '') for article in current_articles)}[/blue]")
+        else:
+            console.print("[blue]No articles older than 30 days found[/blue]")
+        
+        return current_articles
+            
+    except Exception as e:
+        console.print(f"[red]Error deleting old articles: {e}[/red]")
+        return []
+
+def main():
+    try:
+        # Create data directory if it doesn't exist
+        os.makedirs('data', exist_ok=True)
+        
+        # First standardize all existing dates
+        console.print("[blue]Standardizing existing dates...[/blue]")
+        standardize_existing_dates()
+        
+        console.print("[blue]Starting cleanup of old articles...[/blue]")
+        current_articles = delete_old_articles()
+        
+        # Load URLs from file
+        urls = load_urls_from_file()
+        
+        if not urls:
+            console.print("[red]No URLs found in url.md. Exiting...[/red]")
+            return
+        
+        # Initialize empty articles list if none exist
+        if not current_articles:
+            current_articles = []
+        
+        # Process all feeds
+        console.print("[green]Starting RSS feed processing...[/green]")
+        total_new_articles = 0
+        processed_urls = set()
+        
+        for url in urls:
+            console.print(f"\n[blue]Processing feed: {url}[/blue]")
+            new_articles = process_feed(url, processed_urls)
+            
+            if new_articles:
+                current_articles.extend(new_articles)
+                total_new_articles += len(new_articles)
+                
+                # Save incrementally
+                with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
+                    json.dump(current_articles, f, ensure_ascii=False, indent=2)
+                
                 console.print(f"[green]Saved {len(new_articles)} new articles from {url}[/green]")
-                # Update processed URLs
                 processed_urls.update(article['link'] for article in new_articles)
-            else:
-                console.print(f"[red]Failed to save articles from {url}[/red]")
-    
-    if total_new_articles > 0:
-        console.print(f"\n[green]Successfully processed all feeds[/green]")
-        console.print(f"[green]Total new articles: {total_new_articles}[/green]")
-        console.print(f"[green]Total articles in database: {len(all_articles)}[/green]")
-    else:
-        console.print("[yellow]No new articles found[/yellow]")
+        
+        if total_new_articles > 0:
+            console.print(f"\n[green]Successfully processed all feeds[/green]")
+            console.print(f"[green]Total new articles: {total_new_articles}[/green]")
+            console.print(f"[green]Total articles in database: {len(current_articles)}[/green]")
+        else:
+            console.print("[yellow]No new articles found[/yellow]")
+            
+    except Exception as e:
+        console.print(f"[red]Error in main: {e}[/red]")
 
 if __name__ == "__main__":
     main()
