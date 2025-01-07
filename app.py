@@ -42,7 +42,7 @@ def get_filtered_keywords(articles, selected_keywords=None):
     keyword_counter = Counter()
     for article in filtered_articles:
         keyword_counter.update(article.get('keywords', []))
-    return keyword_counter.most_common(50)
+    return keyword_counter.most_common(100)
 
 @app.route('/')
 def index():
