@@ -4,6 +4,8 @@ from collections import Counter
 from urllib.parse import urlencode, unquote
 import re
 from html import unescape
+from datetime import datetime
+import dateutil.parser
 
 app = Flask(__name__)
 
@@ -50,7 +52,9 @@ def get_filtered_keywords(articles, selected_keywords=None):
 @app.route('/')
 def index():
     selected_keywords = request.args.getlist('keyword')
-    read_filter = request.args.get('read_filter', 'all')  # Default to 'all'
+    read_filter = request.args.get('read_filter', 'all')
+    sort_order = request.args.get('sort', 'desc')  # Default to newest first
+    
     articles = load_articles()
     
     # First filter by keywords if any
@@ -68,13 +72,20 @@ def index():
     elif read_filter == 'unread':
         filtered_articles = [article for article in filtered_articles if not article.get('read', False)]
     
+    # Sort articles by date
+    filtered_articles.sort(
+        key=lambda x: dateutil.parser.parse(x.get('published', '1970-01-01T00:00:00.000Z')),
+        reverse=(sort_order == 'desc')
+    )
+    
     keywords = get_filtered_keywords(articles, selected_keywords)
     
     return render_template('index.html',
                          articles=filtered_articles,
                          keywords=keywords,
                          selected_keywords=selected_keywords,
-                         read_filter=read_filter)
+                         read_filter=read_filter,
+                         sort_order=sort_order)
 
 @app.template_filter('toggle_keyword_url')
 def toggle_keyword_url(keyword, current_keywords):
@@ -84,8 +95,9 @@ def toggle_keyword_url(keyword, current_keywords):
     else:
         new_keywords.append(keyword)
     
-    # Get current read filter
+    # Preserve current filters
     read_filter = request.args.get('read_filter', 'all')
+    sort_order = request.args.get('sort', 'desc')
     
     # Build query parameters
     params = []
@@ -93,6 +105,8 @@ def toggle_keyword_url(keyword, current_keywords):
         params.append(('keyword', k))
     if read_filter != 'all':
         params.append(('read_filter', read_filter))
+    if sort_order != 'desc':
+        params.append(('sort', sort_order))
     
     if params:
         return f"/?{urlencode(params)}"

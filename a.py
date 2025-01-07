@@ -15,6 +15,7 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from bs4 import BeautifulSoup
+import dateutil.parser
 
 console = Console()
 
@@ -134,9 +135,20 @@ def load_existing_articles():
             console.print(f"[yellow]Warning: Could not read {json_file}: {e}[/yellow]")
     return []
 
+def standardize_date(date_str):
+    """Convert various date formats to standard ISO format"""
+    try:
+        # Parse the date string using dateutil (handles multiple formats)
+        parsed_date = dateutil.parser.parse(date_str)
+        # Convert to ISO 8601 format
+        return parsed_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+    except Exception as e:
+        console.print(f"[red]Error parsing date {date_str}: {e}[/red]")
+        return date_str
+
 def process_feed(url, processed_urls):
     try:
-        # First load existing articles to preserve read status
+        # Load existing articles to preserve read status
         existing_articles = {}
         try:
             with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
@@ -161,14 +173,19 @@ def process_feed(url, processed_urls):
             desc_keywords = extract_keywords(translated_description)
             combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
             
+            # Get and standardize the published date
+            published_date = entry.get('published', '')
+            if published_date:
+                published_date = standardize_date(published_date)
+            
             article = {
                 'title': translated_title,
                 'description': translated_description,
                 'link': entry.link,
-                'published': entry.get('published', ''),
+                'published': published_date,
                 'original_language': detect_language(entry.title),
                 'keywords': combined_keywords,
-                'read': existing_articles.get(entry.link, False)  # Preserve existing read status or default to False
+                'read': existing_articles.get(entry.link, False)
             }
             articles.append(article)
         
@@ -199,7 +216,30 @@ def save_articles(articles, json_file):
         console.print(f"[red]Error saving articles: {e}[/red]")
         return False
 
+def standardize_existing_dates():
+    """Update existing articles with standardized dates"""
+    try:
+        # Load existing articles
+        with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
+            articles = json.load(f)
+        
+        # Standardize dates
+        for article in articles:
+            if 'published' in article and article['published']:
+                article['published'] = standardize_date(article['published'])
+        
+        # Save updated articles
+        with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
+            json.dump(articles, f, ensure_ascii=False, indent=2)
+            
+        console.print("[green]Successfully standardized existing dates[/green]")
+    except Exception as e:
+        console.print(f"[red]Error standardizing dates: {e}[/red]")
+
 def main():
+    # Add this line at the start of main to update existing dates
+    standardize_existing_dates()
+    
     # Load URLs from file instead of hardcoding
     urls = load_urls_from_file()
     
