@@ -94,7 +94,7 @@ def extract_keywords(text):
         )
         
         # Unwanted keywords to filter out
-        unwanted_keywords = {'hspace', 'src', 'img', 'align'}
+        unwanted_keywords = {'hspace', 'src', 'img', 'align', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'}
         
         # Extract keywords
         keywords = kw_extractor.extract_keywords(text)
@@ -181,6 +181,16 @@ def load_urls_from_file():
         console.print(f"[red]Error loading URLs from url.md: {e}[/red]")
         return []
 
+def save_articles(articles, json_file):
+    """Save articles to JSON file"""
+    try:
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(articles, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        console.print(f"[red]Error saving articles: {e}[/red]")
+        return False
+
 def main():
     # Load URLs from file instead of hardcoding
     urls = load_urls_from_file()
@@ -190,35 +200,40 @@ def main():
         return
     
     create_data_folder()
+    json_file = 'data/rss_feed.json'
     
     # Load previously processed URLs and existing articles
     processed_urls = load_processed_urls()
-    existing_articles = load_existing_articles()
+    all_articles = load_existing_articles()
     console.print(f"[green]Found {len(processed_urls)} previously processed articles[/green]")
     
     # Process all feeds
     console.print("[green]Starting RSS feed processing...[/green]")
-    new_articles = []
+    total_new_articles = 0
     
     for url in urls:
         console.print(f"\n[blue]Processing feed: {url}[/blue]")
-        articles = process_feed(url, processed_urls)
-        new_articles.extend(articles)
-    
-    if not new_articles:
-        console.print("[yellow]No new articles to process[/yellow]")
-        return
+        new_articles = process_feed(url, processed_urls)
         
-    # Combine existing and new articles
-    all_articles = existing_articles + new_articles
+        if new_articles:
+            # Update the main articles list
+            all_articles.extend(new_articles)
+            total_new_articles += len(new_articles)
+            
+            # Save incrementally after each feed
+            if save_articles(all_articles, json_file):
+                console.print(f"[green]Saved {len(new_articles)} new articles from {url}[/green]")
+                # Update processed URLs
+                processed_urls.update(article['link'] for article in new_articles)
+            else:
+                console.print(f"[red]Failed to save articles from {url}[/red]")
     
-    # Save to JSON
-    json_file = 'data/rss_feed.json'
-    with open(json_file, 'w', encoding='utf-8') as f:
-        json.dump(all_articles, f, ensure_ascii=False, indent=2)
-    
-    console.print(f"\n[green]Successfully saved {len(new_articles)} new articles to {json_file}[/green]")
-    console.print(f"[green]Total articles in database: {len(all_articles)}[/green]")
+    if total_new_articles > 0:
+        console.print(f"\n[green]Successfully processed all feeds[/green]")
+        console.print(f"[green]Total new articles: {total_new_articles}[/green]")
+        console.print(f"[green]Total articles in database: {len(all_articles)}[/green]")
+    else:
+        console.print("[yellow]No new articles found[/yellow]")
 
 if __name__ == "__main__":
     main()
