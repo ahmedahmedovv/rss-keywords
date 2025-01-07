@@ -92,5 +92,48 @@
         </div>
         {% endfor %}
     </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="mt-8 flex justify-center items-center gap-2">
+        <!-- First page -->
+        <a href="{{ url_for('index', page=1, keyword=selected_keywords, read_filter=read_filter, sort=sort_order) }}"
+           class="px-3 py-2 rounded-lg {% if page == 1 %}bg-gray-100 text-gray-400 cursor-not-allowed{% else %}bg-blue-500 text-white hover:bg-blue-600{% endif %}">
+            «
+        </a>
+        
+        <!-- Previous page -->
+        <a href="{{ url_for('index', page=page-1, keyword=selected_keywords, read_filter=read_filter, sort=sort_order) }}"
+           class="px-3 py-2 rounded-lg {% if page == 1 %}bg-gray-100 text-gray-400 cursor-not-allowed{% else %}bg-blue-500 text-white hover:bg-blue-600{% endif %}">
+            ‹
+        </a>
+        
+        <!-- Page numbers -->
+        {% for p in range(max(1, page-2), min(total_pages+1, page+3)) %}
+        <a href="{{ url_for('index', page=p, keyword=selected_keywords, read_filter=read_filter, sort=sort_order) }}"
+           class="px-3 py-2 rounded-lg {% if p == page %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
+            {{ p }}
+        </a>
+        {% endfor %}
+        
+        <!-- Next page -->
+        <a href="{{ url_for('index', page=page+1, keyword=selected_keywords, read_filter=read_filter, sort=sort_order) }}"
+           class="px-3 py-2 rounded-lg {% if page == total_pages %}bg-gray-100 text-gray-400 cursor-not-allowed{% else %}bg-blue-500 text-white hover:bg-blue-600{% endif %}">
+            ›
+        </a>
+        
+        <!-- Last page -->
+        <a href="{{ url_for('index', page=total_pages, keyword=selected_keywords, read_filter=read_filter, sort=sort_order) }}"
+           class="px-3 py-2 rounded-lg {% if page == total_pages %}bg-gray-100 text-gray-400 cursor-not-allowed{% else %}bg-blue-500 text-white hover:bg-blue-600{% endif %}">
+            »
+        </a>
+    </div>
+
+    <!-- Page info -->
+    <div class="mt-4 text-center text-gray-600">
+        Showing articles {{ (page-1) * ARTICLES_PER_PAGE + 1 }} - {{ min(page * ARTICLES_PER_PAGE, total_articles) }} 
+        of {{ total_articles }} total
+    </div>
+    {% endif %}
 </div>
 {% endblock %} 

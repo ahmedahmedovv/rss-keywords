@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, url_for
 import json
 from collections import Counter
 from urllib.parse import urlencode, unquote
@@ -6,8 +6,14 @@ import re
 from html import unescape
 from datetime import datetime
 import dateutil.parser
+from math import ceil
 
 app = Flask(__name__)
+
+# Add max and min functions to Jinja2's global context
+app.jinja_env.globals.update(max=max, min=min)
+
+ARTICLES_PER_PAGE = 10  # Number of articles per page
 
 def clean_html(text):
     """Remove HTML tags and decode HTML entities"""
@@ -54,6 +60,7 @@ def index():
     selected_keywords = request.args.getlist('keyword')
     read_filter = request.args.get('read_filter', 'all')
     sort_order = request.args.get('sort', 'desc')
+    page = request.args.get('page', 1, type=int)
     
     articles = load_articles()
     
@@ -88,14 +95,28 @@ def index():
         reverse=(sort_order == 'desc')
     )
     
+    # Calculate pagination
+    total_articles = len(filtered_articles)
+    total_pages = ceil(total_articles / ARTICLES_PER_PAGE)
+    page = min(max(page, 1), total_pages)  # Ensure page is within valid range
+    
+    # Slice articles for current page
+    start_idx = (page - 1) * ARTICLES_PER_PAGE
+    end_idx = start_idx + ARTICLES_PER_PAGE
+    paginated_articles = filtered_articles[start_idx:end_idx]
+    
     keywords = get_filtered_keywords(articles, selected_keywords)
     
     return render_template('index.html',
-                         articles=filtered_articles,
+                         articles=paginated_articles,
                          keywords=keywords,
                          selected_keywords=selected_keywords,
                          read_filter=read_filter,
-                         sort_order=sort_order)
+                         sort_order=sort_order,
+                         page=page,
+                         total_pages=total_pages,
+                         total_articles=total_articles,
+                         ARTICLES_PER_PAGE=ARTICLES_PER_PAGE)
 
 @app.template_filter('toggle_keyword_url')
 def toggle_keyword_url(keyword, current_keywords):
