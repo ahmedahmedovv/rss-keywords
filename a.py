@@ -6,6 +6,9 @@ import json
 import os
 from datetime import datetime
 import langdetect
+from collections import Counter
+import re
+import string
 
 console = Console()
 
@@ -33,6 +36,31 @@ def translate_if_needed(text):
         console.print(f"[red]Translation error: {e}[/red]")
         return text
 
+def clean_text(text):
+    """Clean text by removing punctuation, numbers, and extra whitespace"""
+    text = text.lower()
+    text = re.sub(r'[' + string.punctuation + ']', ' ', text)
+    text = re.sub(r'\d+', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def extract_keywords(text):
+    """Extract keywords from text, excluding common English stop words"""
+    # Common English stop words
+    stop_words = {'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
+                 'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 
+                 'to', 'was', 'were', 'will', 'with', 'the', 'this', 'but', 'they',
+                 'have', 'had', 'what', 'when', 'where', 'who', 'which', 'why', 'how'}
+    
+    cleaned_text = clean_text(text)
+    words = cleaned_text.split()
+    keywords = [word for word in words if word not in stop_words and len(word) > 2]
+    
+    # Count keyword frequencies
+    keyword_freq = Counter(keywords)
+    # Return top 20 keywords
+    return [word for word, _ in keyword_freq.most_common(20)]
+
 def process_feed(url):
     """Process single RSS feed"""
     try:
@@ -40,12 +68,23 @@ def process_feed(url):
         articles = []
         
         for entry in track(feed.entries, description=f"Processing {url}..."):
+            # Translate content first
+            translated_title = translate_if_needed(entry.title)
+            translated_description = translate_if_needed(entry.description)
+            
+            # Extract keywords from translated content
+            title_keywords = extract_keywords(translated_title)
+            desc_keywords = extract_keywords(translated_description)
+            # Combine keywords and remove duplicates while preserving order
+            combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
+            
             article = {
-                'title': translate_if_needed(entry.title),
-                'description': translate_if_needed(entry.description),
+                'title': translated_title,
+                'description': translated_description,
                 'link': entry.link,
                 'published': entry.get('published', ''),
-                'original_language': detect_language(entry.title)
+                'original_language': detect_language(entry.title),
+                'keywords': combined_keywords
             }
             articles.append(article)
         
