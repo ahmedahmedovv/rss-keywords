@@ -67,21 +67,49 @@ def extract_keywords(text):
         console.print(f"[red]Keyword extraction error: {e}[/red]")
         return []
 
-def process_feed(url):
-    """Process single RSS feed"""
+def load_processed_urls():
+    """Load all previously processed article URLs from the JSON file"""
+    processed_urls = set()
+    json_file = 'data/rss_feed.json'
+    
+    if os.path.exists(json_file):
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                processed_urls.update(article['link'] for article in data)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not read {json_file}: {e}[/yellow]")
+    return processed_urls
+
+def load_existing_articles():
+    """Load existing articles from the JSON file"""
+    json_file = 'data/rss_feed.json'
+    if os.path.exists(json_file):
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not read {json_file}: {e}[/yellow]")
+    return []
+
+def process_feed(url, processed_urls):
+    """Process single RSS feed, skipping already processed articles"""
     try:
         feed = feedparser.parse(url)
         articles = []
         
         for entry in track(feed.entries, description=f"Processing {url}..."):
-            # Translate content first
+            # Skip if article already processed
+            if entry.link in processed_urls:
+                console.print(f"[blue]Skipping already processed article: {entry.link}[/blue]")
+                continue
+                
+            # Process new article
             translated_title = translate_if_needed(entry.title)
             translated_description = translate_if_needed(entry.description)
             
-            # Extract keywords from translated content
             title_keywords = extract_keywords(translated_title)
             desc_keywords = extract_keywords(translated_description)
-            # Combine keywords and remove duplicates while preserving order
             combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
             
             article = {
@@ -100,7 +128,6 @@ def process_feed(url):
         return []
 
 def main():
-    # RSS feed URLs
     urls = [
         "https://notesfrompoland.com/feed/",
         "https://defence24.pl/_RSS"
@@ -108,23 +135,34 @@ def main():
     
     create_data_folder()
     
+    # Load previously processed URLs and existing articles
+    processed_urls = load_processed_urls()
+    existing_articles = load_existing_articles()
+    console.print(f"[green]Found {len(processed_urls)} previously processed articles[/green]")
+    
     # Process all feeds
     console.print("[green]Starting RSS feed processing...[/green]")
-    all_articles = []
+    new_articles = []
     
     for url in urls:
         console.print(f"\n[blue]Processing feed: {url}[/blue]")
-        articles = process_feed(url)
-        all_articles.extend(articles)
+        articles = process_feed(url, processed_urls)
+        new_articles.extend(articles)
+    
+    if not new_articles:
+        console.print("[yellow]No new articles to process[/yellow]")
+        return
+        
+    # Combine existing and new articles
+    all_articles = existing_articles + new_articles
     
     # Save to JSON
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"data/rss_feed_{timestamp}.json"
-    
-    with open(filename, 'w', encoding='utf-8') as f:
+    json_file = 'data/rss_feed.json'
+    with open(json_file, 'w', encoding='utf-8') as f:
         json.dump(all_articles, f, ensure_ascii=False, indent=2)
     
-    console.print(f"\n[green]Successfully saved {len(all_articles)} articles to {filename}[/green]")
+    console.print(f"\n[green]Successfully saved {len(new_articles)} new articles to {json_file}[/green]")
+    console.print(f"[green]Total articles in database: {len(all_articles)}[/green]")
 
 if __name__ == "__main__":
     main()
