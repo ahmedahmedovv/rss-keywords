@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 import arrow
 from dateparser import parse
 from utils.logger import setup_logger
+from email.utils import parsedate_to_datetime
 
 # Load environment variables
 load_dotenv()
@@ -171,9 +172,19 @@ def format_date(date_string):
     except Exception:
         return date_string
 
-def format_date_for_db(date_string):
+def normalize_date(date_string):
     """Convert any date format to YYYY-MM-DD format for database storage"""
     try:
+        # Handle RFC 2822 format (e.g. "Wed, 08 Jan 2025 17:57:38 -0000")
+        if ',' in date_string and any(day in date_string for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']):
+            try:
+                date_obj = parsedate_to_datetime(date_string)
+                return date_obj.strftime('%Y-%m-%d')
+            except Exception as e:
+                logger.debug(f"Failed to parse RFC 2822 date: {e}")
+                # Continue with regular parsing if RFC 2822 parsing fails
+        
+        # Regular date parsing
         date = parse(date_string)
         if date:
             result = arrow.get(date).format('YYYY-MM-DD')
@@ -206,14 +217,10 @@ def process_feed(url, processed_urls):
                 elif hasattr(entry, 'updated'):
                     published = entry.updated
                 else:
-                    published = datetime.now().strftime('%Y-%m-%d')  # Use current date if no date found
-                
-                # Convert date to standard format
-                try:
-                    date_obj = parse(published)
-                    published = date_obj.strftime('%Y-%m-%d')
-                except:
                     published = datetime.now().strftime('%Y-%m-%d')
+                
+                # Normalize the date format
+                published = normalize_date(published)
 
                 # Process new article
                 translated_title = translate_if_needed(entry.title)
@@ -223,15 +230,11 @@ def process_feed(url, processed_urls):
                 desc_keywords = extract_keywords(translated_description)
                 combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
                 
-                # Format the date immediately when creating new article
-                published_date = entry.get('published', '')
-                formatted_date = format_date(published_date)
-                
                 article = {
                     'title': translated_title,
                     'description': translated_description,
                     'link': entry.link,
-                    'published': formatted_date,  # Store in DD/MM/YYYY format
+                    'published': published,
                     'original_language': detect_language(entry.title),
                     'keywords': combined_keywords,
                     'read': existing_articles.get(entry.link, False)
