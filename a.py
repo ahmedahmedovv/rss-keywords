@@ -102,25 +102,29 @@ def extract_keywords(text):
     try:
         # Initialize YAKE keyword extractor
         kw_extractor = yake.KeywordExtractor(
-            lan="en",              # language
-            n=1,                   # extract single words
-            dedupLim=0.9,          # deduplication threshold
-            dedupFunc='seqm',      # deduplication function
-            windowsSize=1,         # window size
-            top=20,                # number of keywords to extract
+            lan="en",              
+            n=1,                   
+            dedupLim=0.9,          
+            dedupFunc='seqm',      
+            windowsSize=1,         
+            top=20,                
             features=None
         )
         
         # Unwanted keywords to filter out
-        unwanted_keywords = {'clear', 'style', 'block', 'webfeedsFeaturedVisual', 'published', 'margin-bottom', 'display', 'height', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'href', 'rel', 'months', 'vspace', 'image', 'alt', 'years', 'head', 'class', 'time', 'jpeg', 'left', 'width', 'type', 'year', 'month', 'day', 'hspace', 'src', 'img', 'align', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'}
+        unwanted_keywords = {'margin-bottom', 'display', 'height', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'href', 'rel', 'months', 'vspace', 'image', 'alt', 'years', 'head', 'class', 'time', 'jpeg', 'left', 'width', 'type', 'year', 'month', 'day', 'hspace', 'src', 'img', 'align', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'}
         
         # Extract keywords
         keywords = kw_extractor.extract_keywords(text)
-        # Filter out unwanted keywords and return only the keywords (not their scores)
+        # Filter out unwanted keywords and normalize case
         filtered_keywords = [
-            keyword for keyword, _ in keywords 
+            keyword.lower() for keyword, _ in keywords 
             if keyword.lower() not in unwanted_keywords
         ]
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        filtered_keywords = [x for x in filtered_keywords if not (x in seen or seen.add(x))]
         
         return filtered_keywords
     except Exception as e:

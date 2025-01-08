@@ -63,16 +63,19 @@ def get_filtered_keywords(articles, selected_keywords=None):
     # Start with all articles if no keywords selected
     filtered_articles = articles
     if selected_keywords:
-        # Filter articles that contain ALL selected keywords
+        # Filter articles that contain ALL selected keywords (case-insensitive)
         filtered_articles = [
             article for article in articles
-            if all(kw in article.get('keywords', []) for kw in selected_keywords)
+            if all(any(kw.lower() == k.lower() for k in article.get('keywords', [])) 
+                  for kw in selected_keywords)
         ]
     
     # Count keywords in filtered articles
     keyword_counter = Counter()
     for article in filtered_articles:
-        keyword_counter.update(article.get('keywords', []))
+        # Convert all keywords to lowercase when counting
+        keywords = [k.lower() for k in article.get('keywords', [])]
+        keyword_counter.update(keywords)
     return keyword_counter.most_common(100)
 
 def parse_date(date_str):
@@ -314,6 +317,9 @@ def toggle_favorite_keyword():
         
         if not keyword:
             return jsonify({'success': False, 'error': 'No keyword provided'})
+            
+        # Normalize keyword to lowercase
+        keyword = keyword.lower()
             
         # Check if keyword is already favorited
         response = supabase.table('favorite_keywords').select('*').eq('keyword', keyword).execute()
