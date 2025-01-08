@@ -187,48 +187,61 @@ def format_date_for_db(date_string):
         return arrow.utcnow().format('YYYY-MM-DD')
 
 def process_feed(url, processed_urls):
+    """Process a single RSS feed"""
     try:
-        # Load existing articles to preserve read status
-        existing_articles = {}
-        try:
-            with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
-                for article in json.load(f):
-                    existing_articles[article['link']] = article.get('read', False)
-        except FileNotFoundError:
-            pass
-
         feed = feedparser.parse(url)
-        articles = []
+        new_articles = []
         
-        for entry in track(feed.entries, description=f"Processing {url}..."):
-            if entry.link in processed_urls:
-                console.print(f"[blue]Skipping already processed article: {entry.link}[/blue]")
-                continue
+        existing_articles = {}  # Initialize empty dict for existing articles
+        
+        for entry in feed.entries:
+            try:
+                # Skip if already processed
+                if entry.link in processed_urls:
+                    continue
+                    
+                # Get publication date
+                if hasattr(entry, 'published'):
+                    published = entry.published
+                elif hasattr(entry, 'updated'):
+                    published = entry.updated
+                else:
+                    published = datetime.now().strftime('%Y-%m-%d')  # Use current date if no date found
                 
-            # Process new article
-            translated_title = translate_if_needed(entry.title)
-            translated_description = translate_if_needed(entry.description)
-            
-            title_keywords = extract_keywords(translated_title)
-            desc_keywords = extract_keywords(translated_description)
-            combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
-            
-            # Format the date immediately when creating new article
-            published_date = entry.get('published', '')
-            formatted_date = format_date(published_date)
-            
-            article = {
-                'title': translated_title,
-                'description': translated_description,
-                'link': entry.link,
-                'published': formatted_date,  # Store in DD/MM/YYYY format
-                'original_language': detect_language(entry.title),
-                'keywords': combined_keywords,
-                'read': existing_articles.get(entry.link, False)
-            }
-            articles.append(article)
+                # Convert date to standard format
+                try:
+                    date_obj = parse(published)
+                    published = date_obj.strftime('%Y-%m-%d')
+                except:
+                    published = datetime.now().strftime('%Y-%m-%d')
+
+                # Process new article
+                translated_title = translate_if_needed(entry.title)
+                translated_description = translate_if_needed(entry.description)
+                
+                title_keywords = extract_keywords(translated_title)
+                desc_keywords = extract_keywords(translated_description)
+                combined_keywords = list(dict.fromkeys(title_keywords + desc_keywords))
+                
+                # Format the date immediately when creating new article
+                published_date = entry.get('published', '')
+                formatted_date = format_date(published_date)
+                
+                article = {
+                    'title': translated_title,
+                    'description': translated_description,
+                    'link': entry.link,
+                    'published': formatted_date,  # Store in DD/MM/YYYY format
+                    'original_language': detect_language(entry.title),
+                    'keywords': combined_keywords,
+                    'read': existing_articles.get(entry.link, False)
+                }
+                new_articles.append(article)
+            except Exception as e:
+                console.print(f"[red]Error processing entry {entry.link}: {e}[/red]")
+                continue
         
-        return articles
+        return new_articles
     except Exception as e:
         console.print(f"[red]Error processing feed {url}: {e}[/red]")
         return []
@@ -249,6 +262,19 @@ def save_articles(articles):
     """Save articles to Supabase"""
     try:
         logger.info(f"Starting to save {len(articles)} articles")
+        
+        # Run cleanup before saving new articles
+        try:
+            # Calculate the cutoff date (1 month ago)
+            cutoff_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            
+            # Delete articles older than cutoff_date
+            response = supabase.table('articles').delete().lt('published', cutoff_date).execute()
+            deleted_count = len(response.data) if response.data else 0
+            logger.info(f"Cleaned up {deleted_count} old articles (older than {cutoff_date})")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}", exc_info=True)
+        
         for article in articles:
             try:
                 # Check if article already exists
@@ -256,6 +282,17 @@ def save_articles(articles):
                 
                 if not existing.data:
                     logger.debug(f"Saving new article: {article['title']}")
+                    
+                    # Ensure date is in YYYY-MM-DD format
+                    if 'published' in article:
+                        try:
+                            # Parse any date format and convert to YYYY-MM-DD
+                            date_obj = parse(article['published'])
+                            article['published'] = date_obj.strftime('%Y-%m-%d')
+                        except Exception as e:
+                            logger.error(f"Error converting date format for {article['title']}: {e}")
+                            continue
+
                     supabase.table('articles').insert({
                         'title': article['title'],
                         'description': article['description'],

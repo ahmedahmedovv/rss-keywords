@@ -4,7 +4,7 @@ from collections import Counter
 from urllib.parse import urlencode, unquote
 import re
 from html import unescape
-from datetime import datetime
+from datetime import datetime, timedelta
 import dateutil.parser
 from math import ceil
 from supabase import create_client
@@ -205,11 +205,11 @@ def toggle_read(article_id):
 
 @app.template_filter('format_date')
 def format_date_filter(date_string):
-    """Convert any date format to DD/MM/YYYY for display"""
+    """Format date for display"""
     try:
         date = parse(date_string)
         if date:
-            formatted_date = arrow.get(date).format('DD/MM/YYYY')
+            formatted_date = arrow.get(date).format('YYYY-MM-DD')
             logger.debug(f"Date formatting: {date_string} -> {formatted_date}")
             return formatted_date
         logger.warning(f"Could not parse date: {date_string}")
@@ -281,9 +281,9 @@ def fix_date_formats():
         for article in articles:
             published = article.get('published', '')
             try:
-                # Parse the date and ensure DD/MM/YYYY format
+                # Parse the date and ensure YYYY-MM-DD format
                 date = parse_date(published)
-                correct_format = date.strftime('%d/%m/%Y')
+                correct_format = date.strftime('%Y-%m-%d')
                 
                 # Update if format is different
                 if published != correct_format:
@@ -336,6 +336,45 @@ def toggle_favorite_keyword():
     except Exception as e:
         logger.error(f"Error toggling favorite keyword: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
+
+@app.template_filter('format_date_display')
+def format_date_display_filter(date_string):
+    """Format date for display in a user-friendly format"""
+    try:
+        date = parse(date_string)
+        if date:
+            # Store as YYYY-MM-DD but display as DD/MM/YYYY
+            return arrow.get(date).format('DD/MM/YYYY')
+        return date_string
+    except Exception as e:
+        logger.error(f"Error formatting display date {date_string}: {e}", exc_info=True)
+        return date_string
+
+def cleanup_old_articles():
+    """Delete articles older than one month"""
+    try:
+        # Calculate the cutoff date (1 month ago)
+        cutoff_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        # Delete articles older than cutoff_date
+        response = supabase.table('articles').delete().lt('published', cutoff_date).execute()
+        
+        deleted_count = len(response.data) if response.data else 0
+        logger.info(f"Deleted {deleted_count} articles older than {cutoff_date}")
+        return deleted_count
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up old articles: {e}", exc_info=True)
+        return 0
+
+# Add a route to manually trigger cleanup
+@app.route('/cleanup')
+def run_cleanup():
+    count = cleanup_old_articles()
+    return jsonify({
+        'success': True,
+        'deleted_count': count
+    })
 
 if __name__ == '__main__':
     app.run(debug=True) 
