@@ -20,6 +20,7 @@ from supabase.client import create_client
 from dotenv import load_dotenv
 import arrow
 from dateparser import parse
+from utils.logger import setup_logger
 
 # Load environment variables
 load_dotenv()
@@ -31,6 +32,9 @@ supabase = create_client(
 )
 
 console = Console()
+
+# Create logger for this module
+logger = setup_logger('rss_processor')
 
 # Download required NLTK data (run once)
 nltk.download('punkt')
@@ -166,16 +170,17 @@ def format_date(date_string):
 def format_date_for_db(date_string):
     """Convert any date format to YYYY-MM-DD format for database storage"""
     try:
-        # Use dateparser to automatically detect and parse the date
         date = parse(date_string)
         if date:
-            return arrow.get(date).format('YYYY-MM-DD')
+            result = arrow.get(date).format('YYYY-MM-DD')
+            logger.debug(f"Date conversion successful: {date_string} -> {result}")
+            return result
         else:
-            console.print(f"[red]Could not parse date: {date_string}[/red]")
-            return arrow.utcnow().format('YYYY-MM-DD')  # Fallback to current date
+            logger.warning(f"Could not parse date: {date_string}")
+            return arrow.utcnow().format('YYYY-MM-DD')
     except Exception as e:
-        console.print(f"[red]Error parsing date {date_string}: {e}[/red]")
-        return arrow.utcnow().format('YYYY-MM-DD')  # Fallback to current date
+        logger.error(f"Error parsing date {date_string}: {e}", exc_info=True)
+        return arrow.utcnow().format('YYYY-MM-DD')
 
 def process_feed(url, processed_urls):
     try:
@@ -239,32 +244,34 @@ def load_urls_from_file():
 def save_articles(articles):
     """Save articles to Supabase"""
     try:
-        # Convert articles to proper format for Supabase
+        logger.info(f"Starting to save {len(articles)} articles")
         for article in articles:
-            # Convert date format for database
-            published_date = format_date_for_db(article['published'])
-            if not published_date:
-                console.print(f"[yellow]Skipping article due to invalid date: {article['title']}[/yellow]")
+            try:
+                # Check if article already exists
+                existing = supabase.table('articles').select('id').eq('link', article['link']).execute()
+                
+                if not existing.data:
+                    logger.debug(f"Saving new article: {article['title']}")
+                    supabase.table('articles').insert({
+                        'title': article['title'],
+                        'description': article['description'],
+                        'link': article['link'],
+                        'published': article['published'],
+                        'original_language': article['original_language'],
+                        'keywords': article['keywords'],
+                        'read': article.get('read', False)
+                    }).execute()
+                else:
+                    logger.debug(f"Article already exists: {article['title']}")
+            except Exception as e:
+                logger.error(f"Error saving article {article.get('title', 'Unknown')}: {e}", exc_info=True)
                 continue
-
-            # Check if article already exists
-            existing = supabase.table('articles').select('id').eq('link', article['link']).execute()
-            
-            if not existing.data:
-                # Insert new article with converted date
-                supabase.table('articles').insert({
-                    'title': article['title'],
-                    'description': article['description'],
-                    'link': article['link'],
-                    'published': published_date,  # Use converted date format
-                    'original_language': article['original_language'],
-                    'keywords': article['keywords'],
-                    'read': article.get('read', False)
-                }).execute()
-        
+                
+        logger.info("Successfully saved all articles")
         return True
+        
     except Exception as e:
-        console.print(f"[red]Error saving articles: {e}[/red]")
+        logger.error("Error in save_articles function", exc_info=True)
         return False
 
 def standardize_existing_dates():

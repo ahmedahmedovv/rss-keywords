@@ -10,6 +10,9 @@ from math import ceil
 from supabase import create_client
 import os
 from dotenv import load_dotenv
+import arrow
+from dateparser import parse
+from utils.logger import setup_logger
 
 app = Flask(__name__)
 
@@ -26,6 +29,9 @@ supabase = create_client(
     os.getenv('SUPABASE_URL'),
     os.getenv('SUPABASE_KEY')
 )
+
+# Create logger for this module
+logger = setup_logger('web_app')
 
 def clean_html(text):
     """Remove HTML tags and decode HTML entities"""
@@ -186,20 +192,22 @@ def toggle_read(article_id):
         return jsonify({'success': False, 'error': str(e)})
 
 @app.template_filter('format_date')
-def format_date(date_string):
-    """Convert any date format to YYYY-MM-DD"""
+def format_date_filter(date_string):
+    """Convert any date format to DD/MM/YYYY for display"""
     try:
-        # First try to parse as YYYY-MM-DD
-        try:
-            date = datetime.strptime(date_string, '%Y-%m-%d')
-            return date_string  # Already in correct format
-        except ValueError:
-            # If that fails, try parsing with dateutil
-            date = dateutil.parser.parse(date_string)
-            return date.strftime('%Y-%m-%d')
-    except Exception as e:
-        print(f"Error parsing date {date_string}: {e}")
+        date = parse(date_string)
+        if date:
+            formatted_date = arrow.get(date).format('DD/MM/YYYY')
+            logger.debug(f"Date formatting: {date_string} -> {formatted_date}")
+            return formatted_date
+        logger.warning(f"Could not parse date: {date_string}")
         return date_string
+    except Exception as e:
+        logger.error(f"Error formatting date {date_string}: {e}", exc_info=True)
+        return date_string
+
+# Make sure the filter is registered
+app.jinja_env.filters['format_date'] = format_date_filter
 
 def analyze_dates():
     """Analyze all dates in the database for consistency"""
