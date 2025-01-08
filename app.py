@@ -55,6 +55,18 @@ def get_filtered_keywords(articles, selected_keywords=None):
         keyword_counter.update(article.get('keywords', []))
     return keyword_counter.most_common(100)
 
+def parse_date(date_str):
+    """Parse date string ensuring DD/MM/YYYY format"""
+    try:
+        # First try parsing as DD/MM/YYYY
+        return datetime.strptime(date_str, '%d/%m/%Y')
+    except ValueError:
+        try:
+            # If that fails, try dateutil parser
+            return dateutil.parser.parse(date_str)
+        except:
+            return datetime.min
+
 @app.route('/')
 def index():
     selected_keywords = request.args.getlist('keyword')
@@ -80,19 +92,6 @@ def index():
         filtered_articles = [article for article in filtered_articles if not article.get('read', False)]
     
     # Sort articles by date
-    def parse_date(date_str):
-        """Parse date string ensuring DD/MM/YYYY format"""
-        try:
-            # First try parsing as DD/MM/YYYY
-            return datetime.strptime(date_str, '%d/%m/%Y')
-        except ValueError:
-            try:
-                # If that fails, try dateutil parser and convert to DD/MM/YYYY
-                date = dateutil.parser.parse(date_str)
-                return date
-            except:
-                return datetime.min
-    
     # Sort using the parsed dates
     filtered_articles.sort(
         key=lambda x: parse_date(x.get('published', '')),
