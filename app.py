@@ -90,6 +90,16 @@ def parse_date(date_str):
         except:
             return datetime.min
 
+def format_date(date_string):
+    """Convert any date format to DD/MM/YYYY for display"""
+    try:
+        date = parse(date_string)
+        if date:
+            return arrow.get(date).format('DD/MM/YYYY')
+        return date_string
+    except Exception:
+        return date_string
+
 @app.route('/')
 def index():
     selected_keywords = request.args.getlist('keyword')
