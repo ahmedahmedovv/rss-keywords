@@ -60,12 +60,13 @@ def load_articles():
         return []
 
 def get_filtered_keywords(articles, selected_keywords=None):
-    # Start with all articles if no keywords selected
-    filtered_articles = articles
+    # First filter to only unread articles
+    filtered_articles = [article for article in articles if not article.get('read', False)]
+    
     if selected_keywords:
         # Filter articles that contain ALL selected keywords (case-insensitive)
         filtered_articles = [
-            article for article in articles
+            article for article in filtered_articles
             if all(any(kw.lower() == k.lower() for k in article.get('keywords', [])) 
                   for kw in selected_keywords)
         ]
