@@ -70,7 +70,7 @@ def parse_date(date_str):
 @app.route('/')
 def index():
     selected_keywords = request.args.getlist('keyword')
-    read_filter = request.args.get('read_filter', 'all')
+    read_filter = request.args.get('read_filter', 'unread')
     sort_order = request.args.get('sort', 'desc')
     page = request.args.get('page', 1, type=int)
     
