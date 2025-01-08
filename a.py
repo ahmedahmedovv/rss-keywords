@@ -136,10 +136,10 @@ def load_existing_articles():
     return []
 
 def standardize_date(date_str):
-    """Convert various date formats to DD/MM/YYYY format"""
+    """Convert various date formats to YYYY-MM-DD format"""
     try:
         parsed_date = dateutil.parser.parse(date_str)
-        return parsed_date.strftime('%d/%m/%Y')
+        return parsed_date.strftime('%Y-%m-%d')
     except Exception as e:
         console.print(f"[red]Error parsing date {date_str}: {e}[/red]")
         return date_str
@@ -256,15 +256,15 @@ def delete_old_articles():
         
         # Calculate cutoff date (1 month ago)
         cutoff_date = datetime.utcnow() - timedelta(days=30)
-        cutoff_date_str = cutoff_date.strftime('%d/%m/%Y')
+        cutoff_date_str = cutoff_date.strftime('%Y-%m-%d')
         
         current_articles = []
         deleted_articles = []
         
         for article in articles:
             try:
-                # Parse the DD/MM/YYYY format date
-                published_date = datetime.strptime(article['published'], '%d/%m/%Y')
+                # Parse the YYYY-MM-DD format date
+                published_date = datetime.strptime(article['published'], '%Y-%m-%d')
                 if published_date > cutoff_date:
                     current_articles.append(article)
                 else:

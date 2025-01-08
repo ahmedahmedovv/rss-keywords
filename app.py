@@ -56,13 +56,13 @@ def get_filtered_keywords(articles, selected_keywords=None):
     return keyword_counter.most_common(100)
 
 def parse_date(date_str):
-    """Parse date string ensuring DD/MM/YYYY format"""
+    """Parse date string ensuring YYYY-MM-DD format"""
     try:
-        # First try parsing as DD/MM/YYYY
-        return datetime.strptime(date_str, '%d/%m/%Y')
+        # First try parsing as YYYY-MM-DD
+        return datetime.strptime(date_str, '%Y-%m-%d')
     except ValueError:
         try:
-            # If that fails, try dateutil parser
+            # If that fails, try dateutil parser and convert to YYYY-MM-DD
             return dateutil.parser.parse(date_str)
         except:
             return datetime.min
@@ -185,16 +185,16 @@ def toggle_read(article_id):
 
 @app.template_filter('format_date')
 def format_date(date_string):
-    """Convert any date format to DD/MM/YYYY"""
+    """Convert any date format to YYYY-MM-DD"""
     try:
-        # First try to parse as DD/MM/YYYY
+        # First try to parse as YYYY-MM-DD
         try:
-            date = datetime.strptime(date_string, '%d/%m/%Y')
+            date = datetime.strptime(date_string, '%Y-%m-%d')
             return date_string  # Already in correct format
         except ValueError:
             # If that fails, try parsing with dateutil
             date = dateutil.parser.parse(date_string)
-            return date.strftime('%d/%m/%Y')
+            return date.strftime('%Y-%m-%d')
     except Exception as e:
         print(f"Error parsing date {date_string}: {e}")
         return date_string
