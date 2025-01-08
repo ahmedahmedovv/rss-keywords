@@ -18,6 +18,8 @@ from bs4 import BeautifulSoup
 import dateutil.parser
 from supabase.client import create_client
 from dotenv import load_dotenv
+import arrow
+from dateparser import parse
 
 # Load environment variables
 load_dotenv()
@@ -142,22 +144,38 @@ def load_existing_articles():
     return []
 
 def standardize_date(date_str):
-    """Convert various date formats to YYYY-MM-DD format"""
+    """Convert various date formats to DD/MM/YYYY format"""
     try:
-        parsed_date = dateutil.parser.parse(date_str)
-        return parsed_date.strftime('%Y-%m-%d')
-    except Exception as e:
-        console.print(f"[red]Error parsing date {date_str}: {e}[/red]")
+        date = parse(date_str)
+        if date:
+            return arrow.get(date).format('DD/MM/YYYY')
+        return date_str
+    except Exception:
         return date_str
 
 def format_date(date_string):
     """Convert any date format to DD/MM/YYYY"""
     try:
-        date = dateutil.parser.parse(date_string)
-        return date.strftime('%d/%m/%Y')
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not parse date {date_string}: {e}[/yellow]")
+        date = parse(date_string)
+        if date:
+            return arrow.get(date).format('DD/MM/YYYY')
         return date_string
+    except Exception:
+        return date_string
+
+def format_date_for_db(date_string):
+    """Convert any date format to YYYY-MM-DD format for database storage"""
+    try:
+        # Use dateparser to automatically detect and parse the date
+        date = parse(date_string)
+        if date:
+            return arrow.get(date).format('YYYY-MM-DD')
+        else:
+            console.print(f"[red]Could not parse date: {date_string}[/red]")
+            return arrow.utcnow().format('YYYY-MM-DD')  # Fallback to current date
+    except Exception as e:
+        console.print(f"[red]Error parsing date {date_string}: {e}[/red]")
+        return arrow.utcnow().format('YYYY-MM-DD')  # Fallback to current date
 
 def process_feed(url, processed_urls):
     try:
@@ -223,16 +241,22 @@ def save_articles(articles):
     try:
         # Convert articles to proper format for Supabase
         for article in articles:
+            # Convert date format for database
+            published_date = format_date_for_db(article['published'])
+            if not published_date:
+                console.print(f"[yellow]Skipping article due to invalid date: {article['title']}[/yellow]")
+                continue
+
             # Check if article already exists
             existing = supabase.table('articles').select('id').eq('link', article['link']).execute()
             
             if not existing.data:
-                # Insert new article
+                # Insert new article with converted date
                 supabase.table('articles').insert({
                     'title': article['title'],
                     'description': article['description'],
                     'link': article['link'],
-                    'published': article['published'],
+                    'published': published_date,  # Use converted date format
                     'original_language': article['original_language'],
                     'keywords': article['keywords'],
                     'read': article.get('read', False)
@@ -269,8 +293,8 @@ def delete_old_articles():
     """Delete articles older than one month"""
     try:
         # Calculate cutoff date (1 month ago)
-        cutoff_date = datetime.utcnow() - timedelta(days=30)
-        cutoff_date_str = cutoff_date.strftime('%Y-%m-%d')
+        cutoff_date = arrow.utcnow().shift(months=-1)
+        cutoff_date_str = cutoff_date.format('YYYY-MM-DD')
         
         # Delete old articles from Supabase
         response = supabase.table('articles').delete().lt('published', cutoff_date_str).execute()
@@ -282,8 +306,9 @@ def delete_old_articles():
             # Get info about remaining articles
             remaining = supabase.table('articles').select('published').order('published').execute()
             if remaining.data:
-                oldest = min(article['published'] for article in remaining.data)
-                newest = max(article['published'] for article in remaining.data)
+                dates = [arrow.get(article['published']) for article in remaining.data]
+                oldest = min(dates).format('DD/MM/YYYY')
+                newest = max(dates).format('DD/MM/YYYY')
                 console.print(f"[blue]Oldest retained article: {oldest}[/blue]")
                 console.print(f"[blue]Newest retained article: {newest}[/blue]")
         else:
