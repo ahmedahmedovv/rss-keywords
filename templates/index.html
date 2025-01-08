@@ -138,4 +138,34 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Add this JavaScript before the closing body tag -->
+<script>
+function toggleFavorite(keyword) {
+    fetch('/toggle-favorite-keyword', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ keyword: keyword })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Toggle star appearance
+            const stars = document.querySelectorAll(`.keyword-star[data-keyword="${keyword}"]`);
+            stars.forEach(star => {
+                star.classList.toggle('favorite');
+            });
+            // Reload page to update the favorite keywords section
+            location.reload();
+        } else {
+            console.error('Error:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+</script>
 {% endblock %} 

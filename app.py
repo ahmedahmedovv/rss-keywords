@@ -130,10 +130,19 @@ def index():
     
     keywords = get_filtered_keywords(articles, selected_keywords)
     
+    # Get favorite keywords
+    favorite_keywords = []
+    try:
+        response = supabase.table('favorite_keywords').select('keyword').execute()
+        favorite_keywords = [item['keyword'] for item in response.data]
+    except Exception as e:
+        logger.error(f"Error fetching favorite keywords: {e}", exc_info=True)
+    
     return render_template('index.html',
                          articles=paginated_articles,
                          keywords=keywords,
                          selected_keywords=selected_keywords,
+                         favorite_keywords=favorite_keywords,
                          read_filter=read_filter,
                          sort_order=sort_order,
                          page=page,
@@ -295,6 +304,32 @@ def fix_date_formats():
 def run_date_fixes():
     fix_date_formats()
     return "Date fixes complete. Check server logs."
+
+# Add this new route to handle favoriting keywords
+@app.route('/toggle-favorite-keyword', methods=['POST'])
+def toggle_favorite_keyword():
+    try:
+        data = request.get_json()
+        keyword = data.get('keyword')
+        
+        if not keyword:
+            return jsonify({'success': False, 'error': 'No keyword provided'})
+            
+        # Check if keyword is already favorited
+        response = supabase.table('favorite_keywords').select('*').eq('keyword', keyword).execute()
+        
+        if response.data:
+            # If exists, remove it
+            supabase.table('favorite_keywords').delete().eq('keyword', keyword).execute()
+            return jsonify({'success': True, 'status': 'removed'})
+        else:
+            # If doesn't exist, add it
+            supabase.table('favorite_keywords').insert({'keyword': keyword}).execute()
+            return jsonify({'success': True, 'status': 'added'})
+            
+    except Exception as e:
+        logger.error(f"Error toggling favorite keyword: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True) 

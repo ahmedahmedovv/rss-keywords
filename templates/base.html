@@ -74,6 +74,28 @@
         }
     </script>
     <style>
+        /* Add styles for favorite keywords */
+        .keyword-star {
+            cursor: pointer;
+            color: #d1d5db;
+            transition: color 0.2s;
+        }
+        .keyword-star:hover {
+            color: #9ca3af;
+        }
+        .keyword-star.favorite {
+            color: #fbbf24;
+        }
+        .keyword-star.favorite:hover {
+            color: #f59e0b;
+        }
+        .favorite-keywords {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background-color: #fefce8;
+            border-radius: 0.5rem;
+            border: 1px solid #fef9c3;
+        }
         .article-card {
             transition: background-color 0.2s ease;
         }
@@ -97,13 +119,38 @@
             display: none;
         }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-100">
     <div class="flex">
         <!-- Sidebar -->
         <div class="w-64 h-screen bg-white shadow-lg fixed left-0 overflow-y-auto">
             <div class="p-4">
-                <h2 class="text-xl font-bold mb-4">Keywords</h2>
+                <!-- Favorite Keywords Section -->
+                {% if favorite_keywords %}
+                <div class="favorite-keywords">
+                    <h2 class="text-lg font-semibold mb-3 text-yellow-700">Favorite Keywords</h2>
+                    {% for keyword, count in keywords %}
+                        {% if keyword in favorite_keywords %}
+                        <div class="mb-2">
+                            <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" 
+                               class="group flex items-center justify-between px-3 py-2 rounded-lg {% if keyword in selected_keywords %}bg-blue-500 text-white{% else %}hover:bg-gray-100{% endif %}">
+                                <div class="flex items-center">
+                                    <i class="fas fa-star keyword-star favorite mr-2" 
+                                       onclick="event.stopPropagation(); toggleFavorite('{{ keyword }}')" 
+                                       data-keyword="{{ keyword }}"></i>
+                                    <span>{{ keyword }}</span>
+                                </div>
+                                <span class="text-sm {% if keyword in selected_keywords %}text-blue-100{% else %}text-gray-500{% endif %}">
+                                    {{ count }}
+                                </span>
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+
                 {% if selected_keywords %}
                 <div class="mb-4">
                     <a href="/" class="text-sm text-blue-500 hover:text-blue-700">
@@ -111,15 +158,25 @@
                     </a>
                 </div>
                 {% endif %}
+
+                <!-- All Keywords Section -->
+                <h2 class="text-lg font-semibold mb-3">All Keywords</h2>
                 <div class="space-y-2">
                     {% for keyword, count in keywords %}
-                    <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" 
-                       class="block px-3 py-2 rounded-lg {% if keyword in selected_keywords %}bg-blue-500 text-white{% else %}hover:bg-gray-100{% endif %} flex justify-between items-center">
-                        <span>{{ keyword }}</span>
-                        <span class="text-sm {% if keyword in selected_keywords %}text-blue-100{% else %}text-gray-500{% endif %}">
-                            {{ count }}
-                        </span>
-                    </a>
+                    <div class="flex items-center">
+                        <a href="{{ keyword|toggle_keyword_url(selected_keywords) }}" 
+                           class="flex-1 group flex items-center justify-between px-3 py-2 rounded-lg {% if keyword in selected_keywords %}bg-blue-500 text-white{% else %}hover:bg-gray-100{% endif %}">
+                            <div class="flex items-center">
+                                <i class="fas fa-star keyword-star mr-2 {% if keyword in favorite_keywords %}favorite{% endif %}" 
+                                   onclick="event.stopPropagation(); toggleFavorite('{{ keyword }}')" 
+                                   data-keyword="{{ keyword }}"></i>
+                                <span>{{ keyword }}</span>
+                            </div>
+                            <span class="text-sm {% if keyword in selected_keywords %}text-blue-100{% else %}text-gray-500{% endif %}">
+                                {{ count }}
+                            </span>
+                        </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
