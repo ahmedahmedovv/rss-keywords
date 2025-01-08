@@ -7,6 +7,9 @@ from html import unescape
 from datetime import datetime
 import dateutil.parser
 from math import ceil
+from supabase import create_client
+import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 
@@ -14,6 +17,15 @@ app = Flask(__name__)
 app.jinja_env.globals.update(max=max, min=min)
 
 ARTICLES_PER_PAGE = 10  # Number of articles per page
+
+# Load environment variables
+load_dotenv()
+
+# Initialize Supabase client
+supabase = create_client(
+    os.getenv('SUPABASE_URL'),
+    os.getenv('SUPABASE_KEY')
+)
 
 def clean_html(text):
     """Remove HTML tags and decode HTML entities"""
@@ -25,16 +37,18 @@ def clean_html(text):
 
 def load_articles():
     try:
-        with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
-            articles = json.load(f)
-            # Clean HTML from title and description
-            for article in articles:
-                article['title'] = clean_html(article['title'])
-                article['description'] = clean_html(article['description'])
-                # Ensure read status exists
-                if 'read' not in article:
-                    article['read'] = False
-            return articles
+        # Query articles from Supabase
+        response = supabase.table('articles').select('*').execute()
+        articles = response.data
+        
+        # Clean HTML from title and description
+        for article in articles:
+            article['title'] = clean_html(article['title'])
+            article['description'] = clean_html(article['description'])
+            # Ensure read status exists
+            if 'read' not in article:
+                article['read'] = False
+        return articles
     except Exception as e:
         print(f"Error loading articles: {e}")
         return []
@@ -152,35 +166,23 @@ def toggle_read(article_id):
         # Decode the URL-encoded article ID
         decoded_id = unquote(unquote(article_id))
         
-        # Load articles from file
-        with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
-            articles = json.load(f)
+        # Get current article status
+        response = supabase.table('articles').select('read').eq('link', decoded_id).execute()
         
-        # Find and toggle article read status
-        article_found = False
-        current_status = False
-        
-        for article in articles:
-            if article['link'] == decoded_id:
-                article['read'] = not article.get('read', False)
-                current_status = article['read']
-                article_found = True
-                break
-        
-        if not article_found:
-            print(f"Article not found: {decoded_id}")  # Debug print
+        if not response.data:
             return jsonify({'success': False, 'error': 'Article not found'})
+            
+        current_status = not response.data[0]['read']
         
-        # Save updated articles back to file
-        with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
-            json.dump(articles, f, ensure_ascii=False, indent=2)
+        # Update article read status
+        supabase.table('articles').update({'read': current_status}).eq('link', decoded_id).execute()
         
         return jsonify({
             'success': True, 
             'read': current_status
         })
     except Exception as e:
-        print(f"Error in toggle_read: {e}")  # Debug print
+        print(f"Error in toggle_read: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.template_filter('format_date')

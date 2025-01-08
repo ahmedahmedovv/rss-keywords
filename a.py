@@ -16,6 +16,17 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from bs4 import BeautifulSoup
 import dateutil.parser
+from supabase.client import create_client
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize Supabase client
+supabase = create_client(
+    os.getenv('SUPABASE_URL'),
+    os.getenv('SUPABASE_KEY')
+)
 
 console = Console()
 
@@ -111,28 +122,23 @@ def extract_keywords(text):
         return []
 
 def load_processed_urls():
-    """Load all previously processed article URLs from the JSON file"""
+    """Load all previously processed article URLs from Supabase"""
     processed_urls = set()
-    json_file = 'data/rss_feed.json'
-    
-    if os.path.exists(json_file):
-        try:
-            with open(json_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                processed_urls.update(article['link'] for article in data)
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not read {json_file}: {e}[/yellow]")
+    try:
+        # Query all article links from Supabase
+        response = supabase.table('articles').select('link').execute()
+        processed_urls.update(article['link'] for article in response.data)
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not fetch processed URLs: {e}[/yellow]")
     return processed_urls
 
 def load_existing_articles():
-    """Load existing articles from the JSON file"""
-    json_file = 'data/rss_feed.json'
-    if os.path.exists(json_file):
-        try:
-            with open(json_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not read {json_file}: {e}[/yellow]")
+    """Load existing articles from Supabase"""
+    try:
+        response = supabase.table('articles').select('*').execute()
+        return response.data
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not load existing articles: {e}[/yellow]")
     return []
 
 def standardize_date(date_str):
@@ -212,11 +218,26 @@ def load_urls_from_file():
         console.print(f"[red]Error loading URLs from url.md: {e}[/red]")
         return []
 
-def save_articles(articles, json_file):
-    """Save articles to JSON file"""
+def save_articles(articles):
+    """Save articles to Supabase"""
     try:
-        with open(json_file, 'w', encoding='utf-8') as f:
-            json.dump(articles, f, ensure_ascii=False, indent=2)
+        # Convert articles to proper format for Supabase
+        for article in articles:
+            # Check if article already exists
+            existing = supabase.table('articles').select('id').eq('link', article['link']).execute()
+            
+            if not existing.data:
+                # Insert new article
+                supabase.table('articles').insert({
+                    'title': article['title'],
+                    'description': article['description'],
+                    'link': article['link'],
+                    'published': article['published'],
+                    'original_language': article['original_language'],
+                    'keywords': article['keywords'],
+                    'read': article.get('read', False)
+                }).execute()
+        
         return True
     except Exception as e:
         console.print(f"[red]Error saving articles: {e}[/red]")
@@ -247,66 +268,34 @@ def standardize_existing_dates():
 def delete_old_articles():
     """Delete articles older than one month"""
     try:
-        if not os.path.exists('data/rss_feed.json'):
-            console.print("[yellow]No articles file found. Creating new one.[/yellow]")
-            return []
-        
-        with open('data/rss_feed.json', 'r', encoding='utf-8') as f:
-            articles = json.load(f)
-        
         # Calculate cutoff date (1 month ago)
         cutoff_date = datetime.utcnow() - timedelta(days=30)
         cutoff_date_str = cutoff_date.strftime('%Y-%m-%d')
         
-        current_articles = []
-        deleted_articles = []
+        # Delete old articles from Supabase
+        response = supabase.table('articles').delete().lt('published', cutoff_date_str).execute()
         
-        for article in articles:
-            try:
-                # Parse the YYYY-MM-DD format date
-                published_date = datetime.strptime(article['published'], '%Y-%m-%d')
-                if published_date > cutoff_date:
-                    current_articles.append(article)
-                else:
-                    deleted_articles.append(article)
-            except (ValueError, TypeError) as e:
-                console.print(f"[yellow]Warning: Could not parse date for article: {article.get('title', 'Unknown')}[/yellow]")
-                current_articles.append(article)
-        
-        deleted_count = len(deleted_articles)
-        
+        deleted_count = len(response.data)
         if deleted_count > 0:
-            with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
-                json.dump(current_articles, f, ensure_ascii=False, indent=2)
-            
-            os.makedirs('data', exist_ok=True)
-            with open('data/deleted_articles.json', 'w', encoding='utf-8') as f:
-                json.dump(deleted_articles, f, ensure_ascii=False, indent=2)
-            
             console.print(f"[green]Deleted {deleted_count} articles older than 30 days[/green]")
-            if current_articles:
-                console.print(f"[blue]Oldest retained article: {min(article.get('published', '') for article in current_articles)}[/blue]")
-                console.print(f"[blue]Newest retained article: {max(article.get('published', '') for article in current_articles)}[/blue]")
+            
+            # Get info about remaining articles
+            remaining = supabase.table('articles').select('published').order('published').execute()
+            if remaining.data:
+                oldest = min(article['published'] for article in remaining.data)
+                newest = max(article['published'] for article in remaining.data)
+                console.print(f"[blue]Oldest retained article: {oldest}[/blue]")
+                console.print(f"[blue]Newest retained article: {newest}[/blue]")
         else:
             console.print("[blue]No articles older than 30 days found[/blue]")
-        
-        return current_articles
             
     except Exception as e:
         console.print(f"[red]Error deleting old articles: {e}[/red]")
-        return []
 
 def main():
     try:
-        # Create data directory if it doesn't exist
-        os.makedirs('data', exist_ok=True)
-        
-        # First standardize all existing dates
-        console.print("[blue]Standardizing existing dates...[/blue]")
-        standardize_existing_dates()
-        
         console.print("[blue]Starting cleanup of old articles...[/blue]")
-        current_articles = delete_old_articles()
+        delete_old_articles()
         
         # Load URLs from file
         urls = load_urls_from_file()
@@ -314,10 +303,6 @@ def main():
         if not urls:
             console.print("[red]No URLs found in url.md. Exiting...[/red]")
             return
-        
-        # Initialize empty articles list if none exist
-        if not current_articles:
-            current_articles = []
         
         # Process all feeds
         console.print("[green]Starting RSS feed processing...[/green]")
@@ -329,20 +314,19 @@ def main():
             new_articles = process_feed(url, processed_urls)
             
             if new_articles:
-                current_articles.extend(new_articles)
+                # Save articles to Supabase
+                save_articles(new_articles)
                 total_new_articles += len(new_articles)
-                
-                # Save incrementally
-                with open('data/rss_feed.json', 'w', encoding='utf-8') as f:
-                    json.dump(current_articles, f, ensure_ascii=False, indent=2)
-                
                 console.print(f"[green]Saved {len(new_articles)} new articles from {url}[/green]")
                 processed_urls.update(article['link'] for article in new_articles)
         
         if total_new_articles > 0:
             console.print(f"\n[green]Successfully processed all feeds[/green]")
             console.print(f"[green]Total new articles: {total_new_articles}[/green]")
-            console.print(f"[green]Total articles in database: {len(current_articles)}[/green]")
+            
+            # Get total count from Supabase
+            count = supabase.table('articles').select('id', count='exact').execute()
+            console.print(f"[green]Total articles in database: {count.count}[/green]")
         else:
             console.print("[yellow]No new articles found[/yellow]")
             
