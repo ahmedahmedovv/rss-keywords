@@ -20,13 +20,13 @@
         </h1>
         
         <div class="flex flex-col gap-2">
-            <!-- Sort Order -->
+            <!-- Sort Order Controls -->
             <div class="flex gap-2">
-                <a href="{{ url_for('index', keyword=selected_keywords, read_filter=read_filter, sort='desc') }}" 
-                   class="px-3 py-2 text-sm rounded-lg {% if sort_order == 'desc' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
+                <a href="{{ url_for('index', keyword=selected_keywords, read_filter=read_filter, sort='desc', page=page) }}"
+                   class="px-3 py-2 text-sm rounded-lg {% if sort_order == 'desc' or not sort_order %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
                     Newest First
                 </a>
-                <a href="{{ url_for('index', keyword=selected_keywords, read_filter=read_filter, sort='asc') }}"
+                <a href="{{ url_for('index', keyword=selected_keywords, read_filter=read_filter, sort='asc', page=page) }}"
                    class="px-3 py-2 text-sm rounded-lg {% if sort_order == 'asc' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
                     Oldest First
                 </a>
@@ -34,15 +34,15 @@
             
             <!-- Read/Unread Filter -->
             <div class="flex gap-2">
-                <a href="{{ url_for('index', keyword=selected_keywords, read_filter='all', sort=sort_order) }}" 
+                <a href="{{ url_for('index', keyword=selected_keywords, read_filter='all') }}" 
                    class="px-3 py-2 text-sm rounded-lg {% if read_filter == 'all' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
                     All
                 </a>
-                <a href="{{ url_for('index', keyword=selected_keywords, read_filter='unread', sort=sort_order) }}"
+                <a href="{{ url_for('index', keyword=selected_keywords, read_filter='unread') }}"
                    class="px-3 py-2 text-sm rounded-lg {% if read_filter == 'unread' or not read_filter %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
                     Unread Only
                 </a>
-                <a href="{{ url_for('index', keyword=selected_keywords, read_filter='read', sort=sort_order) }}"
+                <a href="{{ url_for('index', keyword=selected_keywords, read_filter='read') }}"
                    class="px-3 py-2 text-sm rounded-lg {% if read_filter == 'read' %}bg-blue-500 text-white{% else %}bg-gray-100 hover:bg-gray-200{% endif %}">
                     Read Only
                 </a>
@@ -57,6 +57,10 @@
              data-link="{{ article.link }}">
             <div class="flex justify-between items-start">
                 <div class="flex-1">
+                    <!-- Published date -->
+                    <div class="text-sm text-gray-500 mb-2">
+                        {{ article.created_at|format_date }}
+                    </div>
                     <h2 class="text-xl font-semibold mb-2">
                         <a href="{{ article.link }}" 
                            target="_blank" 
@@ -65,9 +69,6 @@
                             {{ article.title }}
                         </a>
                     </h2>
-                    <p class="text-sm text-gray-500 mb-2">
-                        Published: {{ article.published|format_date_display }}
-                    </p>
                     <p class="text-gray-600 mb-4">{{ article.description }}</p>
                 </div>
                 <div class="flex flex-col items-end gap-2 ml-4">

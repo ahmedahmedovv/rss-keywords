@@ -4,15 +4,14 @@ from collections import Counter
 from urllib.parse import urlencode, unquote
 import re
 from html import unescape
-from datetime import datetime, timedelta
-import dateutil.parser
 from math import ceil
 from supabase import create_client
 import os
 from dotenv import load_dotenv
+from utils.logger import setup_logger
+from datetime import datetime, timedelta
 import arrow
 from dateparser import parse
-from utils.logger import setup_logger
 
 app = Flask(__name__)
 
@@ -44,7 +43,10 @@ def clean_html(text):
 def load_articles():
     try:
         # Query articles from Supabase
-        response = supabase.table('articles').select('*').execute()
+        response = supabase.table('articles')\
+            .select('*')\
+            .order('created_at', desc=True)\
+            .execute()
         articles = response.data
         
         # Clean HTML from title and description
@@ -54,9 +56,19 @@ def load_articles():
             # Ensure read status exists
             if 'read' not in article:
                 article['read'] = False
+            
+            # Format created_at date
+            if 'created_at' in article:
+                try:
+                    date_obj = parse(article['created_at'])
+                    if date_obj:
+                        article['created_at'] = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception as e:
+                    logger.error(f"Error parsing created_at date for article {article.get('title', 'Unknown')}: {e}")
+        
         return articles
     except Exception as e:
-        print(f"Error loading articles: {e}")
+        logger.error(f"Error loading articles: {e}", exc_info=True)
         return []
 
 def get_filtered_keywords(articles, selected_keywords=None):
@@ -79,34 +91,12 @@ def get_filtered_keywords(articles, selected_keywords=None):
         keyword_counter.update(keywords)
     return keyword_counter.most_common(100)
 
-def parse_date(date_str):
-    """Parse date string ensuring YYYY-MM-DD format"""
-    try:
-        # First try parsing as YYYY-MM-DD
-        return datetime.strptime(date_str, '%Y-%m-%d')
-    except ValueError:
-        try:
-            # If that fails, try dateutil parser and convert to YYYY-MM-DD
-            return dateutil.parser.parse(date_str)
-        except:
-            return datetime.min
-
-def format_date(date_string):
-    """Convert any date format to DD/MM/YYYY for display"""
-    try:
-        date = parse(date_string)
-        if date:
-            return arrow.get(date).format('DD/MM/YYYY')
-        return date_string
-    except Exception:
-        return date_string
-
 @app.route('/')
 def index():
     selected_keywords = request.args.getlist('keyword')
     read_filter = request.args.get('read_filter', 'unread')
-    sort_order = request.args.get('sort', 'desc')
     page = request.args.get('page', 1, type=int)
+    sort_order = request.args.get('sort', 'desc')  # Add sort parameter
     
     articles = load_articles()
     
@@ -125,12 +115,9 @@ def index():
     elif read_filter == 'unread':
         filtered_articles = [article for article in filtered_articles if not article.get('read', False)]
     
-    # Sort articles by date
-    # Sort using the parsed dates
-    filtered_articles.sort(
-        key=lambda x: parse_date(x.get('published', '')),
-        reverse=(sort_order == 'desc')
-    )
+    # Sort articles by published date
+    if sort_order == 'asc':
+        filtered_articles.reverse()
     
     # Calculate pagination
     total_articles = len(filtered_articles)
@@ -158,11 +145,11 @@ def index():
                          selected_keywords=selected_keywords,
                          favorite_keywords=favorite_keywords,
                          read_filter=read_filter,
-                         sort_order=sort_order,
                          page=page,
                          total_pages=total_pages,
                          total_articles=total_articles,
-                         ARTICLES_PER_PAGE=ARTICLES_PER_PAGE)
+                         ARTICLES_PER_PAGE=ARTICLES_PER_PAGE,
+                         sort_order=sort_order)  # Pass sort order to template
 
 @app.template_filter('toggle_keyword_url')
 def toggle_keyword_url(keyword, current_keywords):
@@ -172,7 +159,7 @@ def toggle_keyword_url(keyword, current_keywords):
     else:
         new_keywords.append(keyword)
     
-    # Preserve current filters
+    # Preserve current filters and sort order
     read_filter = request.args.get('read_filter', 'all')
     sort_order = request.args.get('sort', 'desc')
     
@@ -218,11 +205,42 @@ def toggle_read(article_id):
 def format_date_filter(date_string):
     """Format date for display"""
     try:
+        if not date_string:
+            return "Unknown date"
+            
         date = parse(date_string)
         if date:
-            formatted_date = arrow.get(date).format('YYYY-MM-DD')
+            # Get current time
+            now = arrow.utcnow()
+            # Convert to UTC to ensure consistent comparison
+            article_date = arrow.get(date).to('UTC')
+            
+            # Calculate time difference
+            diff = now - article_date
+            hours_diff = diff.total_seconds() / 3600
+            
+            # Format based on how long ago the article was added
+            if article_date.date() == now.date():
+                if hours_diff < 1:
+                    minutes = int(diff.total_seconds() / 60)
+                    formatted_date = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+                else:
+                    hours = int(hours_diff)
+                    formatted_date = f"{hours} hour{'s' if hours != 1 else ''} ago"
+            elif article_date.date() == now.shift(days=-1).date():
+                formatted_date = "Yesterday"
+            elif diff.days < 7:
+                formatted_date = f"{diff.days} day{'s' if diff.days != 1 else ''} ago"
+            elif diff.days < 30:
+                weeks = diff.days // 7
+                formatted_date = f"{weeks} week{'s' if weeks != 1 else ''} ago"
+            else:
+                # For older articles, show the date
+                formatted_date = article_date.format('MMM D, YYYY')
+            
             logger.debug(f"Date formatting: {date_string} -> {formatted_date}")
             return formatted_date
+        
         logger.warning(f"Could not parse date: {date_string}")
         return date_string
     except Exception as e:
@@ -347,19 +365,6 @@ def toggle_favorite_keyword():
     except Exception as e:
         logger.error(f"Error toggling favorite keyword: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
-
-@app.template_filter('format_date_display')
-def format_date_display_filter(date_string):
-    """Format date for display in a user-friendly format"""
-    try:
-        date = parse(date_string)
-        if date:
-            # Store as YYYY-MM-DD but display as DD/MM/YYYY
-            return arrow.get(date).format('DD/MM/YYYY')
-        return date_string
-    except Exception as e:
-        logger.error(f"Error formatting display date {date_string}: {e}", exc_info=True)
-        return date_string
 
 def cleanup_old_articles():
     """Delete articles older than one month"""
