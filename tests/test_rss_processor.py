@@ -1,5 +1,5 @@
 import pytest
-from rss_keywords.a import (
+from a import (
     clean_text,
     detect_language,
     normalize_date,
@@ -28,4 +28,4 @@ def test_extract_keywords():
     keywords = extract_keywords(text)
     assert isinstance(keywords, list)
     assert len(keywords) > 0
-    assert "python" in [k.lower() for k in keywords] 
+    assert "python" in [k.lower() for k in keywords]
