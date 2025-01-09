@@ -22,6 +22,7 @@ import arrow
 from dateparser import parse
 from utils.logger import setup_logger
 from email.utils import parsedate_to_datetime
+import time
 
 # Load environment variables
 load_dotenv()
@@ -268,10 +269,7 @@ def save_articles(articles):
         
         # Run cleanup before saving new articles
         try:
-            # Calculate the cutoff date (1 month ago)
             cutoff_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-            
-            # Delete articles older than cutoff_date
             response = supabase.table('articles').delete().lt('published', cutoff_date).execute()
             deleted_count = len(response.data) if response.data else 0
             logger.info(f"Cleaned up {deleted_count} old articles (older than {cutoff_date})")
@@ -279,38 +277,49 @@ def save_articles(articles):
             logger.error(f"Error during cleanup: {e}", exc_info=True)
         
         for article in articles:
-            try:
-                # Check if article already exists
-                existing = supabase.table('articles').select('id').eq('link', article['link']).execute()
-                
-                if not existing.data:
-                    logger.debug(f"Saving new article: {article['title']}")
+            max_retries = 3
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    # Check if article already exists
+                    existing = supabase.table('articles').select('id').eq('link', article['link']).execute()
                     
-                    # Ensure date is in YYYY-MM-DD format
-                    if 'published' in article:
-                        try:
-                            # Parse any date format and convert to YYYY-MM-DD
-                            date_obj = parse(article['published'])
-                            article['published'] = date_obj.strftime('%Y-%m-%d')
-                        except Exception as e:
-                            logger.error(f"Error converting date format for {article['title']}: {e}")
-                            continue
+                    if not existing.data:
+                        logger.debug(f"Saving new article: {article['title']}")
+                        
+                        # Ensure date is in YYYY-MM-DD format
+                        if 'published' in article:
+                            try:
+                                date_obj = parse(article['published'])
+                                article['published'] = date_obj.strftime('%Y-%m-%d')
+                            except Exception as e:
+                                logger.error(f"Error converting date format for {article['title']}: {e}")
+                                continue
 
-                    supabase.table('articles').insert({
-                        'title': article['title'],
-                        'description': article['description'],
-                        'link': article['link'],
-                        'published': article['published'],
-                        'original_language': article['original_language'],
-                        'keywords': article['keywords'],
-                        'read': article.get('read', False)
-                    }).execute()
-                else:
-                    logger.debug(f"Article already exists: {article['title']}")
-            except Exception as e:
-                logger.error(f"Error saving article {article.get('title', 'Unknown')}: {e}", exc_info=True)
-                continue
-                
+                        supabase.table('articles').insert({
+                            'title': article['title'],
+                            'description': article['description'],
+                            'link': article['link'],
+                            'published': article['published'],
+                            'original_language': article['original_language'],
+                            'keywords': article['keywords'],
+                            'read': article.get('read', False)
+                        }).execute()
+                        break  # Success, exit retry loop
+                        
+                    else:
+                        logger.debug(f"Article already exists: {article['title']}")
+                        break  # Article exists, no need to retry
+                        
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count == max_retries:
+                        logger.error(f"Failed to save article after {max_retries} attempts: {article['title']}", exc_info=True)
+                    else:
+                        logger.warning(f"Retry {retry_count}/{max_retries} for article: {article['title']}")
+                        time.sleep(1)  # Wait 1 second before retrying
+                        
         logger.info("Successfully saved all articles")
         return True
         
