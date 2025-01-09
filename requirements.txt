@@ -1,39 +1,16 @@
-# Web Framework
-flask>=2.0.0
-
-# RSS Feed Processing
-feedparser>=6.0.0
-beautifulsoup4>=4.9.0
-
-# Translation and Language Detection
-deep-translator>=1.9.0
-langdetect>=1.0.9
-
-# Date/Time Handling
-python-dateutil>=2.8.0
-arrow>=1.2.0
-dateparser>=1.1.0
-
-# Text Processing and Keywords
-nltk>=3.6.0
-yake>=0.4.0
-
-# Database
-supabase>=0.0.2
-python-dotenv>=0.19.0
-
-# Scheduling
-schedule>=1.1.0
-
-# Rich Console Output
-rich>=10.0.0
-
-# Progress Tracking
-tqdm>=4.62.0
-
-# Collections (included in Python standard library)
-# datetime (included in Python standard library)
-# json (included in Python standard library)
-# re (included in Python standard library)
-# string (included in Python standard library)
-# urllib (included in Python standard library) 
+rich
+deep-translator
+feedparser
+langdetect
+yake
+nltk
+beautifulsoup4
+python-dateutil
+supabase
+python-dotenv
+arrow
+dateparser
+Flask
+schedule
+pytest
+pytest-cov 
