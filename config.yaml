@@ -1,0 +1,29 @@
+database:
+  article_limit: 1000
+  cache_duration_minutes: 5
+  supabase_url: ${SUPABASE_URL}
+  supabase_key: ${SUPABASE_KEY}
+
+pagination:
+  articles_per_page: 10
+  max_pages: 100
+
+cleanup:
+  days_to_keep: 30
+
+caching:
+  keywords_cache_minutes: 1
+  articles_cache_minutes: 5
+
+profiling:
+  enabled: true
+  top_results: 20
+
+logging:
+  level: INFO
+  file_path: logs/app.log
+
+server:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false 

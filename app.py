@@ -12,6 +12,13 @@ from utils.logger import setup_logger
 from datetime import datetime, timedelta
 import arrow
 from dateparser import parse
+from functools import wraps, lru_cache
+import time
+import cProfile
+import io
+import pstats
+import yaml
+from pathlib import Path
 
 app = Flask(__name__)
 
@@ -23,14 +30,42 @@ ARTICLES_PER_PAGE = 10  # Number of articles per page
 # Load environment variables
 load_dotenv()
 
-# Initialize Supabase client
-supabase = create_client(
-    os.getenv('SUPABASE_URL'),
-    os.getenv('SUPABASE_KEY')
-)
-
 # Create logger for this module
 logger = setup_logger('web_app')
+
+# Add performance monitoring decorator
+def performance_logger(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = f(*args, **kwargs)
+        end_time = time.time()
+        
+        duration = end_time - start_time
+        logger.info(f"Function '{f.__name__}' took {duration:.2f} seconds to execute")
+        
+        return result
+    return wrapper
+
+# Add profiler decorator for detailed analysis
+def profile_function(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not config['profiling']['enabled']:
+            return f(*args, **kwargs)
+            
+        pr = cProfile.Profile()
+        pr.enable()
+        result = f(*args, **kwargs)
+        pr.disable()
+        
+        s = io.StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+        ps.print_stats(config['profiling']['top_results'])
+        logger.debug(f"Profile for {f.__name__}:\n{s.getvalue()}")
+        
+        return result
+    return wrapper
 
 def clean_html(text):
     """Remove HTML tags and decode HTML entities"""
@@ -40,37 +75,136 @@ def clean_html(text):
     text = re.sub(r'<[^>]+>', '', text)
     return text
 
-def load_articles():
+# Cache the articles for 5 minutes
+@lru_cache(maxsize=1)
+def get_cache_key():
+    """Generate a cache key that changes based on configured cache duration"""
+    now = datetime.now()
+    cache_minutes = config['database']['cache_duration_minutes']
+    return now.strftime('%Y-%m-%d-%H-%M-') + str(now.minute // cache_minutes)
+
+# Load configuration
+def load_config():
+    config_path = Path(__file__).parent / 'config.yaml'
     try:
-        # Query articles from Supabase
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            
+        # Replace environment variables in config
+        def replace_env_vars(config_dict):
+            for key, value in config_dict.items():
+                if isinstance(value, dict):
+                    replace_env_vars(value)
+                elif isinstance(value, str) and value.startswith('${') and value.endswith('}'):
+                    env_var = value[2:-1]
+                    config_dict[key] = os.getenv(env_var)
+        
+        replace_env_vars(config)
+        return config
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
+        return {
+            'database': {
+                'article_limit': 1000, 
+                'cache_duration_minutes': 5,
+                'supabase_url': os.getenv('SUPABASE_URL'),
+                'supabase_key': os.getenv('SUPABASE_KEY')
+            },
+            'pagination': {'articles_per_page': 10},
+            'cleanup': {'days_to_keep': 30},
+            'caching': {
+                'keywords_cache_minutes': 1,
+                'articles_cache_minutes': 5
+            },
+            'profiling': {
+                'enabled': True,
+                'top_results': 20
+            },
+            'logging': {
+                'level': 'INFO',
+                'file_path': 'logs/app.log'
+            },
+            'server': {
+                'host': '0.0.0.0',
+                'port': 5000,
+                'debug': False
+            }
+        }
+
+# Load config at startup
+config = load_config()
+
+# Initialize Supabase client using config
+supabase = create_client(
+    config['database']['supabase_url'],
+    config['database']['supabase_key']
+)
+
+@performance_logger
+def load_articles():
+    cache_key = get_cache_key()
+    
+    # Check if we have cached articles
+    if hasattr(load_articles, 'cached_articles') and \
+       hasattr(load_articles, 'cache_key') and \
+       load_articles.cache_key == cache_key:
+        logger.info("Returning cached articles")
+        return load_articles.cached_articles
+    
+    try:
+        # Query articles from Supabase with optimized select
         response = supabase.table('articles')\
-            .select('*')\
+            .select('link,title,description,keywords,read,created_at')\
             .order('created_at', desc=True)\
+            .limit(config['database']['article_limit'])\
             .execute()
         articles = response.data
         
-        # Clean HTML from title and description
+        # Process articles
+        processed_articles = []
         for article in articles:
-            article['title'] = clean_html(article['title'])
-            article['description'] = clean_html(article['description'])
-            # Ensure read status exists
-            if 'read' not in article:
-                article['read'] = False
-            
-            # Format created_at date
-            if 'created_at' in article:
-                try:
-                    date_obj = parse(article['created_at'])
-                    if date_obj:
-                        article['created_at'] = date_obj.strftime('%Y-%m-%d %H:%M:%S')
-                except Exception as e:
-                    logger.error(f"Error parsing created_at date for article {article.get('title', 'Unknown')}: {e}")
+            processed_article = {
+                'link': article['link'],
+                'title': clean_html(article['title']),
+                'description': clean_html(article['description']),
+                'keywords': article.get('keywords', []),
+                'read': article.get('read', False),
+                'created_at': format_date_basic(article.get('created_at'))
+            }
+            processed_articles.append(processed_article)
         
-        return articles
+        # Cache the results
+        load_articles.cached_articles = processed_articles
+        load_articles.cache_key = cache_key
+        
+        logger.info(f"Loaded {len(processed_articles)} articles in fresh query")
+        return processed_articles
     except Exception as e:
         logger.error(f"Error loading articles: {e}", exc_info=True)
         return []
 
+def format_date_basic(date_string):
+    """Simple date formatting without complex parsing"""
+    try:
+        if not date_string:
+            return None
+        date_obj = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+        return date_obj.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return date_string
+
+# Cache favorite keywords for 1 minute
+@lru_cache(maxsize=1)
+def get_favorite_keywords():
+    try:
+        response = supabase.table('favorite_keywords').select('keyword').execute()
+        return [item['keyword'] for item in response.data]
+    except Exception as e:
+        logger.error(f"Error fetching favorite keywords: {e}", exc_info=True)
+        return []
+
+@performance_logger
+@profile_function
 def get_filtered_keywords(articles, selected_keywords=None, favorite_keywords=None):
     # First filter to only unread articles
     filtered_articles = [article for article in articles if not article.get('read', False)]
@@ -106,54 +240,51 @@ def get_filtered_keywords(articles, selected_keywords=None, favorite_keywords=No
     # Combine favorite keywords and top non-favorite keywords
     return favorite_keyword_counts + non_favorite_keywords
 
+@performance_logger
+@profile_function
 @app.route('/')
 def index():
+    start_time = time.time()
+    
     selected_keywords = request.args.getlist('keyword')
     read_filter = request.args.get('read_filter', 'unread')
     page = request.args.get('page', 1, type=int)
-    sort_order = request.args.get('sort', 'desc')  # Add sort parameter
+    sort_order = request.args.get('sort', 'desc')
     
+    # Load cached data
     articles = load_articles()
+    favorite_keywords = get_favorite_keywords()
     
-    # First filter by keywords if any
+    # Filter articles (now working with cached data)
+    filtered_articles = articles
     if selected_keywords:
         filtered_articles = [
-            article for article in articles
+            article for article in filtered_articles
             if all(kw in article.get('keywords', []) for kw in selected_keywords)
         ]
-    else:
-        filtered_articles = articles
     
-    # Then filter by read status
     if read_filter == 'read':
         filtered_articles = [article for article in filtered_articles if article.get('read', False)]
     elif read_filter == 'unread':
         filtered_articles = [article for article in filtered_articles if not article.get('read', False)]
     
-    # Sort articles by published date
+    # Sort articles (they should already be sorted from the database)
     if sort_order == 'asc':
         filtered_articles.reverse()
     
-    # Calculate pagination
+    # Pagination
     total_articles = len(filtered_articles)
-    total_pages = ceil(total_articles / ARTICLES_PER_PAGE)
-    page = min(max(page, 1), total_pages)  # Ensure page is within valid range
-    
-    # Slice articles for current page
-    start_idx = (page - 1) * ARTICLES_PER_PAGE
-    end_idx = start_idx + ARTICLES_PER_PAGE
+    total_pages = ceil(total_articles / config['pagination']['articles_per_page'])
+    page = min(max(page, 1), total_pages)
+    start_idx = (page - 1) * config['pagination']['articles_per_page']
+    end_idx = start_idx + config['pagination']['articles_per_page']
     paginated_articles = filtered_articles[start_idx:end_idx]
     
-    # Get favorite keywords first
-    favorite_keywords = []
-    try:
-        response = supabase.table('favorite_keywords').select('keyword').execute()
-        favorite_keywords = [item['keyword'] for item in response.data]
-    except Exception as e:
-        logger.error(f"Error fetching favorite keywords: {e}", exc_info=True)
-    
-    # Pass favorite_keywords to get_filtered_keywords
+    # Get keywords with caching
     keywords = get_filtered_keywords(articles, selected_keywords, favorite_keywords)
+    
+    end_time = time.time()
+    logger.info(f"Index page rendered in {end_time - start_time:.2f} seconds")
     
     return render_template('index.html',
                          articles=paginated_articles,
@@ -165,7 +296,7 @@ def index():
                          total_pages=total_pages,
                          total_articles=total_articles,
                          ARTICLES_PER_PAGE=ARTICLES_PER_PAGE,
-                         sort_order=sort_order)  # Pass sort order to template
+                         sort_order=sort_order)
 
 @app.template_filter('toggle_keyword_url')
 def toggle_keyword_url(keyword, current_keywords):
@@ -408,5 +539,33 @@ def run_cleanup():
         'deleted_count': count
     })
 
+# Add a route to view performance metrics
+@app.route('/performance')
+def performance_metrics():
+    try:
+        # Get database stats
+        start_time = time.time()
+        articles_count = len(load_articles())
+        db_time = time.time() - start_time
+        
+        # Get memory usage
+        import psutil
+        process = psutil.Process()
+        memory_usage = process.memory_info().rss / 1024 / 1024  # Convert to MB
+        
+        return jsonify({
+            'articles_count': articles_count,
+            'database_query_time': f"{db_time:.2f}s",
+            'memory_usage': f"{memory_usage:.2f}MB",
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error getting performance metrics: {e}")
+        return jsonify({'error': str(e)})
+
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(
+        host=config['server']['host'],
+        port=config['server']['port'],
+        debug=config['server']['debug']
+    ) 
