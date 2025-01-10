@@ -94,13 +94,14 @@ def get_filtered_keywords(articles, selected_keywords=None, favorite_keywords=No
     non_favorite_keywords = [
         (kw, count) for kw, count in keyword_counter.most_common()
         if not favorite_keywords or kw.lower() not in {f.lower() for f in favorite_keywords}
-    ][:20]
+    ][:100]
     
-    # Add all favorite keywords with their actual counts
+    # Add all favorite keywords with their actual counts and sort by count
     favorite_keyword_counts = [
         (kw, keyword_counter[kw.lower()]) 
         for kw in (favorite_keywords or [])
     ]
+    favorite_keyword_counts.sort(key=lambda x: (-x[1], x[0].lower()))  # Sort by count desc, then keyword asc
     
     # Combine favorite keywords and top non-favorite keywords
     return favorite_keyword_counts + non_favorite_keywords
