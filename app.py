@@ -71,7 +71,7 @@ def load_articles():
         logger.error(f"Error loading articles: {e}", exc_info=True)
         return []
 
-def get_filtered_keywords(articles, selected_keywords=None):
+def get_filtered_keywords(articles, selected_keywords=None, favorite_keywords=None):
     # First filter to only unread articles
     filtered_articles = [article for article in articles if not article.get('read', False)]
     
@@ -83,13 +83,27 @@ def get_filtered_keywords(articles, selected_keywords=None):
                   for kw in selected_keywords)
         ]
     
-    # Count keywords in filtered articles
+    # Count ALL keywords in filtered articles
     keyword_counter = Counter()
     for article in filtered_articles:
         # Convert all keywords to lowercase when counting
         keywords = [k.lower() for k in article.get('keywords', [])]
         keyword_counter.update(keywords)
-    return keyword_counter.most_common(100)
+    
+    # Get the most common keywords (excluding favorites)
+    non_favorite_keywords = [
+        (kw, count) for kw, count in keyword_counter.most_common()
+        if not favorite_keywords or kw.lower() not in {f.lower() for f in favorite_keywords}
+    ][:20]
+    
+    # Add all favorite keywords with their actual counts
+    favorite_keyword_counts = [
+        (kw, keyword_counter[kw.lower()]) 
+        for kw in (favorite_keywords or [])
+    ]
+    
+    # Combine favorite keywords and top non-favorite keywords
+    return favorite_keyword_counts + non_favorite_keywords
 
 @app.route('/')
 def index():
@@ -129,15 +143,16 @@ def index():
     end_idx = start_idx + ARTICLES_PER_PAGE
     paginated_articles = filtered_articles[start_idx:end_idx]
     
-    keywords = get_filtered_keywords(articles, selected_keywords)
-    
-    # Get favorite keywords
+    # Get favorite keywords first
     favorite_keywords = []
     try:
         response = supabase.table('favorite_keywords').select('keyword').execute()
         favorite_keywords = [item['keyword'] for item in response.data]
     except Exception as e:
         logger.error(f"Error fetching favorite keywords: {e}", exc_info=True)
+    
+    # Pass favorite_keywords to get_filtered_keywords
+    keywords = get_filtered_keywords(articles, selected_keywords, favorite_keywords)
     
     return render_template('index.html',
                          articles=paginated_articles,
